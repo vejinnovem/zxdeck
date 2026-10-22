@@ -27,11 +27,12 @@ The service user needs access to the `spi` and `gpio` groups.
 
 ```bash
 sudo apt update
-sudo apt install git python3-venv python3-spidev python3-gpiozero python3-lgpio
+sudo apt install git python3-venv python3-spidev python3-gpiozero python3-lgpio python3-pil
 ```
 
-GPIO/SPI packages are intentionally installed by Raspberry Pi OS rather than
-vendored into the repository.
+GPIO/SPI and Pillow are intentionally installed by Raspberry Pi OS rather than
+vendored into the repository. Pillow is only needed by the rendered touchscreen
+UI and its preview tools; the backend itself remains independent of it.
 
 ## 3. Clone and prepare Python
 
@@ -41,10 +42,10 @@ cd zxdeck
 python3 -m venv --system-site-packages .venv
 ```
 
-`--system-site-packages` exposes the distribution-provided GPIO/SPI modules to
-the environment. Nothing is downloaded from PyPI. Commands below point Python
-at the repository's `src/` directory explicitly. The core can be used without
-GPIO/SPI packages when the display is disabled.
+`--system-site-packages` exposes the distribution-provided GPIO/SPI/Pillow
+modules to the environment. Nothing is downloaded from PyPI. Commands below
+point Python at the repository's `src/` directory explicitly. The core can be
+used without GPIO/SPI packages when the display is disabled.
 
 ## 4. Run diagnostics
 
@@ -65,6 +66,23 @@ The default output is
 `~/.local/state/zxdeck/touch-calibration.json`. Pass that file to
 `tools/touch_test.py --calibration PATH` when testing the new calibration.
 
+## 5. Generate UI previews without the LCD
+
+The first UI milestone can be inspected as ordinary 240x320 PNG files before
+it is connected to the real display:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/ui_preview.py
+```
+
+Preview files are written to `build/ui-preview/`. The renderer is deliberately
+hardware-independent. A Raspberry Pi adapter can convert the completed RGB
+frame to big-endian RGB565 and send it through the existing LCD driver.
+
+If `assets/fonts/bescii.ttf` exists, the preview tool uses it automatically.
+Otherwise Pillow's fallback font is used so the layout remains testable while a
+final redistributable pixel-font asset is being selected.
+
 ## Configuration profiles
 
 - `config/hardware.example.toml`: both display devices disabled.
@@ -74,4 +92,3 @@ The default output is
 
 Do not commit newly generated runtime calibration files, logs, camera images,
 virtual environments or Python caches.
-
