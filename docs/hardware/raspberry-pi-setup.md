@@ -76,12 +76,28 @@ PYTHONPATH=src .venv/bin/python tools/ui_preview.py
 ```
 
 Preview files are written to `build/ui-preview/`. The renderer is deliberately
-hardware-independent. A Raspberry Pi adapter can convert the completed RGB
-frame to big-endian RGB565 and send it through the existing LCD driver.
+hardware-independent. A Raspberry Pi adapter converts the completed RGB frame
+to big-endian RGB565 and sends it through the existing LCD driver.
 
 If `assets/fonts/bescii.ttf` exists, the preview tool uses it automatically.
 Otherwise Pillow's fallback font is used so the layout remains testable while a
 final redistributable pixel-font asset is being selected.
+
+## 6. Run the interactive mock UI
+
+With the tested TFT, XPT2046 and calibration in place:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/ui_touch_demo.py
+```
+
+The demo shows the splash screen and allows touch navigation through Home,
+Files, Filename and Settings. PLAY/STOP/REC, file selection and SAVE only change
+mock state at this stage; the demo deliberately does not access audio, tape
+parsing or storage.
+
+Use `--no-splash` to skip the startup image. `--font PATH` can point at a chosen
+pixel font during visual experiments.
 
 ## Configuration profiles
 
