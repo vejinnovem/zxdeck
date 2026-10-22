@@ -15,6 +15,7 @@ import time
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.frontends.touch import MultiTapEditor, Screen, TouchRenderer
 from zxdeck.frontends.touch.frame import image_to_rgb565
+from zxdeck.frontends.touch.splash import render_splash
 from zxdeck.hardware.calibration import TouchCalibration
 from zxdeck.hardware.config import HardwareConfig
 from zxdeck.hardware.ili9341 import ILI9341
@@ -24,7 +25,6 @@ from zxdeck.hardware.xpt2046 import XPT2046
 ROOT = Path(__file__).parents[1]
 DEFAULT_CONFIG = ROOT / "config" / "hardware.zxdeck-pi-zero.toml"
 DEFAULT_FONT = ROOT / "assets" / "fonts" / "bescii.ttf"
-DEFAULT_SPLASH = ROOT / "assets" / "branding" / "zxdeck-splash-240x320.png"
 
 MOCK_FILES = (
     "MANIC MINER.TZX",
@@ -42,13 +42,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--calibration", type=Path)
     parser.add_argument("--font", type=Path, default=DEFAULT_FONT)
-    parser.add_argument("--splash", type=Path, default=DEFAULT_SPLASH)
     parser.add_argument("--no-splash", action="store_true")
     return parser.parse_args()
 
 
-def send_frame(display: ILI9341, rendered) -> None:
-    image = rendered.image
+def send_image(display: ILI9341, image) -> None:
     if image.size != (display.config.width, display.config.height):
         raise ValueError(
             f"UI frame is {image.size}, display is "
@@ -58,17 +56,8 @@ def send_frame(display: ILI9341, rendered) -> None:
     display.write_rgb565(image_to_rgb565(image))
 
 
-def send_image(display: ILI9341, path: Path) -> None:
-    from PIL import Image
-
-    image = Image.open(path).convert("RGB")
-    if image.size != (display.config.width, display.config.height):
-        image = image.resize(
-            (display.config.width, display.config.height),
-            Image.Resampling.LANCZOS,
-        )
-    display.set_window(0, 0, display.config.width - 1, display.config.height - 1)
-    display.write_rgb565(image_to_rgb565(image))
+def send_frame(display: ILI9341, rendered) -> None:
+    send_image(display, rendered.image)
 
 
 def main() -> int:
@@ -121,8 +110,11 @@ def main() -> int:
 
     try:
         display.initialize()
-        if not args.no_splash and args.splash.exists():
-            send_image(display, args.splash)
+        if not args.no_splash:
+            send_image(
+                display,
+                render_splash(config.display.width, config.display.height),
+            )
             time.sleep(0.8)
         redraw()
         print("ZX Deck interactive UI prototype ready. Press Ctrl+C to stop.", flush=True)
