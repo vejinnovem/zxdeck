@@ -91,10 +91,15 @@ A future implementation may share `MOSI`, `MISO`, and `SCLK` with the existing S
 
 1. Enable SPI on Raspberry Pi OS before trying to use the display.
 2. Use SPI0 for the current wiring.
-3. Treat the LCD controller as unconfirmed until it has been successfully initialized. Start testing with an ILI9341-compatible driver because that is the expected controller for this class of 2.8-inch 240x320 SPI module.
+3. The LCD was successfully initialized with an ILI9341-compatible sequence at
+   16 MHz on 2026-10-22. Register reads returned zeros, so the exact controller
+   identity is still not positively confirmed, but ILI9341 compatibility is
+   validated for display output.
 4. The touchscreen controller is XPT2046.
 5. LCD and touch may require different SPI clock speeds. Configure the SPI speed per device rather than assuming one speed is suitable for both.
-6. The display orientation and XPT2046 touch-coordinate calibration still need to be determined experimentally.
+6. The tested portrait orientation maps `raw_x` directly to screen X and
+   `raw_y` to screen Y. Screen Y is inverted. Device-specific coefficients are
+   stored in `config/touch-calibration.zxdeck.json`.
 7. GPIO logic on Raspberry Pi is 3.3 V. The current wiring intentionally uses 3.3 V supply pins for the module and backlight.
 
 ## Current status
@@ -102,5 +107,50 @@ A future implementation may share `MOSI`, `MISO`, and `SCLK` with the existing S
 - LCD: physically connected
 - XPT2046 touchscreen: physically connected
 - microSD slot: not connected
-- LCD driver validation: pending
-- touchscreen calibration: pending
+- LCD output: validated with an ILI9341-compatible driver at 16 MHz
+- XPT2046 input: validated at 2 MHz, including GPIO23/PENIRQ
+- touchscreen calibration: validated for the current portrait orientation
+
+## LCD smoke test
+
+The dependency-light test in `tools/display_test.py` initializes the LCD
+and displays eight RGB565 colour bars. It uses only `python3-spidev` and
+`python3-gpiozero`, both available as Raspberry Pi OS packages.
+
+Keep the process running so GPIO25 continues to hold the module's RESET line
+high:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/display_test.py --hold
+```
+
+Without `--hold`, the program releases GPIO25 after sending the image. On the
+tested module this resets the controller and leaves the panel white.
+
+## Touchscreen test and calibration
+
+`tools/touch_test.py` performs a calibrated drawing test and logs raw 12-bit
+coordinates. `tools/touch_calibrate.py` presents five targets, calculates the
+axis mapping, writes device-specific runtime state outside the checkout, and
+then enters a calibrated drawing test.
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/touch_calibrate.py
+```
+
+When an earlier calibration is available, the calibrator uses it only as a
+coarse proximity check: a press more than 60 pixels from the displayed target
+is rejected and the target remains active. The final fit independently checks
+all five samples and requests inconsistent targets again. This behavior was
+verified by deliberately pressing target 4 in the wrong location before
+pressing it correctly.
+
+The validated mapping for this panel and orientation is:
+
+```text
+screen_x =  0.06628301820669348 * raw_x - 13.655379802736576
+screen_y = -0.08854512818011404 * raw_y + 351.1762393304947
+```
+
+The calibration samples covered approximately raw X `444..3519` and raw Y
+`515..3774`. Values are clipped to the 240x320 screen bounds after mapping.

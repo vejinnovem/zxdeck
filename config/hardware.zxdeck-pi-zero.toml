@@ -1,0 +1,19 @@
+# Tested zxdeck prototype: Raspberry Pi Zero W plus 2.8-inch 240x320 SPI TFT.
+[display]
+enabled = true
+width = 240
+height = 320
+spi_bus = 0
+spi_device = 0
+speed_hz = 16000000
+dc_bcm = 24
+reset_bcm = 25
+
+[touch]
+enabled = true
+spi_bus = 0
+spi_device = 1
+speed_hz = 2000000
+irq_bcm = 23
+calibration_file = "touch-calibration.zxdeck.json"
+
