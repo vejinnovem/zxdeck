@@ -32,9 +32,9 @@ below describe the complete touchscreen build.
 
 The tested ILI9341-compatible LCD and XPT2046 touchscreen support is working on
 real hardware. The application has a 240x320 touchscreen UI with Home, Files,
-Search, Filename, scrollable Settings, Output Level, Directory and Power
-screens. The Settings screen shows the current IPv4 address for SSH and
-diagnostics. File-list Up/Down supports hold-to-repeat and changes to
+Search, Filename, scrollable Settings, Output Level, Software Update, Directory
+and Power screens. The Settings screen shows the current IPv4 address for SSH
+and diagnostics. File-list Up/Down supports hold-to-repeat and changes to
 whole-letter-group jumps during a longer hold.
 
 PLAY decodes TAP plus the common TZX standard, turbo, pure-tone,
@@ -43,6 +43,12 @@ and streams unsigned 8-bit mono PCM to the selected ALSA playback device.
 Playback calculates total generated-signal duration and reports progress back
 to the Home screen. The generated tape signal has a persistent 0-100% software
 output-level control; 25% is the conservative default for a new installation.
+
+The touchscreen updater checks `origin/main`, refuses to overwrite local
+changes, and only installs updates that can be applied as a Git fast-forward.
+Installation happens only after the user presses `UPDATE`; it is never installed
+silently. After a successful update the normal systemd installation restarts
+`zxdeck.service` so the new code is loaded.
 
 Rare generalized, CSW and control-flow TZX blocks currently fail visibly
 instead of producing an incorrect signal. Recording and the web frontend are
@@ -60,7 +66,7 @@ diagnostics and troubleshooting:
 - `docs/ui-prototype.md` — detailed touchscreen behaviour;
 - `docs/storage.md` — storage model, indexing and removable media;
 - `docs/audio.md` — ALSA selection, playback progress and output level;
-- `docs/network.md` — network architecture, future Web UI and update rules;
+- `docs/network.md` — networking, Web UI plans and software-update behaviour;
 - `docs/hardware/display.md` — detailed display/touch wiring and hardware notes;
 - `docs/hardware/raspberry-pi-setup.md` — low-level setup, diagnostics and manual tests.
 
@@ -103,22 +109,16 @@ electrical safety limit for every USB adapter. Start low.
 Use Raspberry Pi Imager and install **32-bit Raspberry Pi OS 13 (Trixie)**.
 Raspberry Pi OS Lite is sufficient if the Pi is dedicated to ZX Deck.
 
-Before writing the card, use the Imager customization screen to set:
-
-- your Wi-Fi network;
-- a Linux username and password;
-- hostname, for example `zxdeck`;
-- SSH enabled.
-
-After the first boot, connect over SSH. If mDNS works on your network, the host
-will normally be reachable as:
+Before writing the card, use the Imager customization screen to set Wi-Fi, a
+Linux username/password, a hostname such as `zxdeck`, and enable SSH. After the
+first boot, connect for example with:
 
 ```bash
 ssh YOUR_USER@zxdeck.local
 ```
 
-You only need SSH for installation and troubleshooting; normal operation is
-intended to happen from the touchscreen and, later, the optional web UI.
+SSH is intended for installation and troubleshooting; normal operation should
+happen from the touchscreen and, later, the optional web UI.
 
 ## 3. Wire the TFT and touchscreen
 
@@ -143,26 +143,13 @@ reference.
 | `T_IRQ` | 16 | touch IRQ / GPIO23 |
 
 The display module's microSD slot is not part of the current reference build.
-Do not wire it as part of this setup.
 
 ## 4. Install the required system packages
-
-On the Raspberry Pi:
 
 ```bash
 sudo apt update
 sudo apt install git python3-venv python3-spidev python3-lgpio python3-pil alsa-utils
-```
-
-Enable SPI:
-
-```bash
 sudo raspi-config nonint do_spi 0
-```
-
-Reboot once after enabling SPI:
-
-```bash
 sudo reboot
 ```
 
@@ -175,27 +162,14 @@ cd ~
 git clone https://github.com/vejinnovem/zxdeck.git
 cd zxdeck
 python3 -m venv --system-site-packages .venv
-```
-
-ZX Deck deliberately uses the GPIO/SPI/Pillow packages supplied by Raspberry Pi
-OS. No separate PyPI download is required for the current application.
-
-Create the default tape library:
-
-```bash
 mkdir -p ~/.local/share/zxdeck/tapes
 ```
 
-Put `.tap`, `.tzx` or supported `.pzx` files in this directory. You can copy
-files with SCP/SFTP now, use removable storage through the Settings screen, or
-set up the optional SMB share later in this README.
+Put `.tap`, `.tzx` or supported `.pzx` files in that directory. You can copy
+files with SCP/SFTP now, use removable storage through Settings, or set up the
+optional SMB share later in this README.
 
 ## 6. Calibrate the touchscreen
-
-This is recommended once for each physical touchscreen. The repository includes
-a calibration from the development unit, but resistive panels can differ.
-
-Run:
 
 ```bash
 cd ~/zxdeck
@@ -209,19 +183,10 @@ Touch the displayed targets. The result is saved to:
 ```
 
 ZX Deck automatically prefers this device-specific calibration over the
-prototype calibration stored in the repository. The file lives outside the Git
-checkout, so future updates do not overwrite it.
-
-When calibration has completed and the drawing view appears, press `Ctrl+C` to
-return to the shell.
-
-If you do not use the touchscreen, skip this step and configure the appropriate
-headless/display-disabled hardware profile instead; see `docs/` for that
-non-reference setup.
+prototype calibration stored in the repository. Future Git updates do not
+overwrite it. When calibration finishes, press `Ctrl+C` to return to the shell.
 
 ## 7. Connect the USB audio adapter
-
-Connect the USB audio adapter before starting ZX Deck.
 
 For playback:
 
@@ -235,87 +200,60 @@ For future recording support:
 ZX Spectrum MIC  ->  USB audio IN
 ```
 
-You do not need to choose ALSA device names in the shell. After ZX Deck starts,
-open **Settings -> Playback** and select the USB output device. Select the input
-under **Settings -> Capture** when needed.
+After ZX Deck starts, use **Settings -> Playback** and **Settings -> Capture**
+to select the USB devices. Use **Settings -> Output Level** to set the tape
+signal; start with the default 25% and increase only as needed.
 
-Use **Settings -> Output Level** to adjust the tape signal. Start with the
-default 25% and increase only as needed for reliable loading.
-
-## 8. Install automatic startup
-
-From the repository directory:
+## 8. Install automatic startup and one-click update permission
 
 ```bash
 cd ~/zxdeck
 sudo .venv/bin/python tools/install_service.py
 ```
 
-The installer creates and enables:
+The installer creates and enables `zxdeck.service`, the optional early
+`zxdeck-splash.service`, and `/etc/sudoers.d/zxdeck-update`. The sudoers rule is
+narrow: it permits the ZX Deck user to request only a non-blocking restart of
+`zxdeck.service` after an approved update. Git fetch/merge operations remain
+unprivileged.
 
-- `zxdeck.service` — the normal ZX Deck touchscreen application;
-- `zxdeck-splash.service` — the early boot splash using
-  `assets/branding/zxdeck.png`.
-
-The normal application starts immediately. Reboot once so you can also see the
-early boot splash and confirm the intended appliance-like startup flow:
+Reboot once:
 
 ```bash
 sudo reboot
 ```
 
-After reboot, ZX Deck should start by itself. You should no longer need SSH for
-normal use.
-
-If you deliberately do **not** want the early boot splash, install the service
-with:
-
-```bash
-sudo .venv/bin/python tools/install_service.py --no-boot-splash
-```
+To install without the early splash, use `--no-boot-splash`. To omit the narrow
+self-restart permission, use `--no-update-restart-sudo`; touchscreen updates can
+still install code but will then require a manual restart/reboot.
 
 ## 9. First use from the touchscreen
-
-After ZX Deck starts:
 
 1. Open **Settings -> Playback** and select the USB audio output.
 2. Open **Settings -> Capture** and select the USB audio input if present.
 3. Open **Settings -> Output Level** and keep the signal low initially.
-4. Use **Tape Directory** if you want a library location other than the default.
-5. The Settings screen shows the current IPv4 address for SSH diagnostics.
-6. Return to **Files**, select a tape and press **PLAY**.
+4. Use **Tape Directory** if you want another library location.
+5. Settings shows the current IPv4 address for SSH diagnostics.
+6. **Software Update** checks GitHub and installs an available update only after
+   you press `UPDATE`.
+7. Return to **Files**, select a tape and press **PLAY**.
 
 The playback screen shows current time, total generated tape duration and a
 progress bar.
 
 ## 10. Optional: convenient file transfer over SMB
 
-SMB is not required for ZX Deck. If you are happy using SCP/SFTP, removable
-storage or another method, skip this entire section.
-
-SMB is convenient on a trusted home network because the tape library appears as
-a normal network folder on Windows, macOS or Linux. **Do not expose SMB ports
-139 or 445 directly to the Internet.**
-
-Install Samba:
+SMB is not required. Skip this section if SCP/SFTP, removable storage or another
+method is enough. Use SMB only on a trusted LAN and do not expose ports 139/445
+to the Internet.
 
 ```bash
 sudo apt install samba
-```
-
-Create a Samba password for your existing Linux account:
-
-```bash
 sudo smbpasswd -a "$USER"
-```
-
-Edit the Samba configuration:
-
-```bash
 sudo nano /etc/samba/smb.conf
 ```
 
-Add this block at the end, replacing `YOUR_USER` with your Linux username:
+Add this block, replacing `YOUR_USER`:
 
 ```ini
 [zxdeck]
@@ -328,55 +266,65 @@ Add this block at the end, replacing `YOUR_USER` with your Linux username:
     directory mask = 0775
 ```
 
-Restart Samba:
+Then:
 
 ```bash
 sudo systemctl restart smbd
 ```
 
-Then connect from another computer using either the hostname or the IP shown in
-ZX Deck Settings:
-
-```text
-Windows:  \\zxdeck.local\zxdeck
-macOS:    smb://zxdeck.local/zxdeck
-Linux:    smb://zxdeck.local/zxdeck
-```
-
-If `zxdeck.local` does not resolve on your network, replace it with the numeric
-IPv4 address shown on the touchscreen.
+Typical paths are `\\zxdeck.local\zxdeck` on Windows and
+`smb://zxdeck.local/zxdeck` on macOS/Linux. If mDNS does not resolve, use the
+numeric IPv4 address displayed by ZX Deck.
 
 ## 11. Optional: allow the touchscreen Power Off button
 
-ZX Deck deliberately runs as an unprivileged user. The Power Off screen uses a
-non-interactive `systemctl poweroff`, so the Linux user needs a narrowly scoped
-sudo rule if you want that button to shut the operating system down.
-
-First check the path returned by:
-
-```bash
-command -v systemctl
-```
-
-On a normal Raspberry Pi OS installation it is `/usr/bin/systemctl`. Create:
+The update restart permission does **not** grant shutdown permission. If you
+want the Power Off button to shut down Linux, create a separate narrowly scoped
+rule:
 
 ```bash
 sudo visudo -f /etc/sudoers.d/zxdeck-poweroff
 ```
 
-and add one line, replacing `YOUR_USER` with your Linux username and using the
-actual `systemctl` path from the previous command:
+Replace `YOUR_USER` as appropriate:
 
 ```text
 YOUR_USER ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff
 ```
 
-Save and exit. This permission is optional; skip the whole section if you do
-not want ZX Deck to be able to shut down the Pi.
+Skip this section if you do not want ZX Deck to shut down the Pi.
 
-## 12. Updating ZX Deck
+## 12. Updating ZX Deck from the touchscreen
 
-The repository only needs to be cloned once. Later updates use Git:
+Open **Settings -> Software Update**. Entering the screen automatically runs a
+fetch of `origin/main`, compares the local and remote commits, verifies that the
+checkout is on `main`, checks that the working tree has no local changes, and
+confirms that any update is a fast-forward.
+
+If both commits match, the screen shows `UP TO DATE`. If a safe update exists,
+it shows `UPDATE AVAILABLE` and enables `UPDATE`. Pressing it performs a
+fast-forward merge, stops playback if necessary and restarts `zxdeck.service`.
+
+The updater deliberately refuses to reset, overwrite or auto-stash local
+changes and refuses diverged history. Thus a normal appliance installation gets
+one-approval updating while a modified/development checkout is protected.
+
+If ZX Deck was launched manually from a shell rather than through systemd, the
+code is updated but the UI asks for a manual restart instead of starting a
+second process that could contend for the TFT.
+
+For an older installation that is receiving this updater for the first time,
+run the service installer once after pulling this version:
+
+```bash
+cd ~/zxdeck
+git pull --ff-only
+sudo .venv/bin/python tools/install_service.py
+```
+
+After that bootstrap step, ordinary updates can be approved from the TFT.
+
+### Manual update fallback
 
 ```bash
 cd ~/zxdeck
@@ -385,26 +333,16 @@ sudo .venv/bin/python tools/install_service.py
 sudo systemctl restart zxdeck.service
 ```
 
-Re-running the service installer is intentional: most updates only need the new
-code, but this also keeps systemd units synchronized if their definition
-changes. The explicit restart then makes the running application load the new
-code immediately.
-
-A future touchscreen updater is planned so normal users will not need SSH for
-this step.
-
 ## 13. If something does not work
 
-The installation path above intentionally avoids diagnostic commands. When a
-step fails, use the relevant reference document instead of adding diagnostic
-work to every normal installation:
+The normal path above intentionally avoids diagnostic commands. For failures,
+use the relevant reference document:
 
 - display/touch/wiring: `docs/hardware/display.md`;
-- detailed Raspberry Pi tests and service logs:
-  `docs/hardware/raspberry-pi-setup.md`;
+- detailed Raspberry Pi tests and service logs: `docs/hardware/raspberry-pi-setup.md`;
 - USB audio and playback: `docs/audio.md`;
 - storage/library problems: `docs/storage.md`;
-- network design: `docs/network.md`.
+- network/update behaviour: `docs/network.md`.
 
 If the problem appears to be a ZX Deck bug or an incompatibility not covered by
 the documentation, open a GitHub Issue.

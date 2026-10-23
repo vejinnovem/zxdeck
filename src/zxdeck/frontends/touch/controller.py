@@ -14,19 +14,17 @@ from .keypad import MultiTapEditor
 from .renderer import RenderedScreen, Screen, TouchRenderer
 
 
+UPDATE_SCREEN = "updates"
+
+
 @dataclass(slots=True)
 class TouchUIController:
-    """Own navigation and mock actions while the real services do not exist.
-
-    This controller deliberately does not access GPIO, SPI, storage or audio.
-    It can therefore be exercised on a development machine and replaced by
-    backend commands as the tape services are implemented.
-    """
+    """Own navigation and mock actions while the real services do not exist."""
 
     files: Sequence[str]
     file_paths: Sequence[Path] | None = None
     state: DeckState = field(default_factory=DeckState)
-    screen: Screen = Screen.HOME
+    screen: Screen | str = Screen.HOME
     selected_file: int = 0
     file_offset: int = 0
     editor: MultiTapEditor = field(default_factory=MultiTapEditor)
@@ -46,68 +44,39 @@ class TouchUIController:
     previous_output_level: int = 25
     settings_offset: int = 0
     visible_settings_count: int = 4
-    settings_entry_count: int = 5
+    settings_entry_count: int = 6
     audio_offset: int = 0
     visible_audio_count: int = 5
+    update_status: str = "NOT CHECKED"
+    update_installed_version: str = "--------"
+    update_available_version: str = "--------"
+    update_can_install: bool = False
+    update_busy: bool = False
 
-    def render(
-        self,
-        renderer: TouchRenderer,
-        *,
-        cursor_visible: bool = True,
-    ) -> RenderedScreen:
+    def render(self, renderer: TouchRenderer, *, cursor_visible: bool = True) -> RenderedScreen:
         if self.screen is Screen.HOME:
             return renderer.render_home(self.state)
         if self.screen is Screen.FILES:
-            files = self.filtered_files
-            return renderer.render_files(
-                files,
-                selected=self.selected_file,
-                offset=self.file_offset,
-                query=self.search_query,
-            )
+            return renderer.render_files(self.filtered_files, selected=self.selected_file, offset=self.file_offset, query=self.search_query)
         if self.screen is Screen.FILENAME:
-            return renderer.render_filename(
-                self.editor,
-                cursor_visible=cursor_visible,
-            )
+            return renderer.render_filename(self.editor, cursor_visible=cursor_visible)
         if self.screen is Screen.SEARCH:
-            return renderer.render_search(
-                self.editor,
-                cursor_visible=cursor_visible,
-            )
+            return renderer.render_search(self.editor, cursor_visible=cursor_visible)
         if self.screen is Screen.LETTERS:
             return renderer.render_letters()
         if self.screen is Screen.SETTINGS:
-            return renderer.render_settings(
-                playback_device=self.selected_playback_device,
-                capture_device=self.selected_capture_device,
-                output_level=self.output_level,
-                offset=self.settings_offset,
-            )
+            return renderer.render_settings(playback_device=self.selected_playback_device, capture_device=self.selected_capture_device, output_level=self.output_level, offset=self.settings_offset)
         if self.screen is Screen.OUTPUT_LEVEL:
             return renderer.render_output_level(self.output_level)
+        if self.screen == UPDATE_SCREEN:
+            return renderer.render_updates(installed_version=self.update_installed_version, available_version=self.update_available_version, status=self.update_status, can_install=self.update_can_install, busy=self.update_busy)
         if self.screen is Screen.DIRECTORIES and self.directory_browser is not None:
-            return renderer.render_directories(
-                self.directory_browser.current,
-                self.directory_browser.directories(),
-                selected=self.directory_selected,
-                offset=self.directory_offset,
-            )
+            return renderer.render_directories(self.directory_browser.current, self.directory_browser.directories(), selected=self.directory_selected, offset=self.directory_offset)
         if self.screen in {Screen.AUDIO_PLAYBACK, Screen.AUDIO_CAPTURE}:
             devices = self._current_audio_devices()
-            selected = (
-                self.selected_playback_device
-                if self.screen is Screen.AUDIO_PLAYBACK
-                else self.selected_capture_device
-            )
+            selected = self.selected_playback_device if self.screen is Screen.AUDIO_PLAYBACK else self.selected_capture_device
             title = "PLAYBACK DEVICE" if self.screen is Screen.AUDIO_PLAYBACK else "CAPTURE DEVICE"
-            return renderer.render_audio_devices(
-                title,
-                tuple((device.name, device.alsa_name) for device in devices),
-                selected_device=selected,
-                offset=self.audio_offset,
-            )
+            return renderer.render_audio_devices(title, tuple((device.name, device.alsa_name) for device in devices), selected_device=selected, offset=self.audio_offset)
         return renderer.render_power(requested=self.shutdown_requested)
 
     @property
@@ -119,11 +88,7 @@ class TouchUIController:
         needle = self.search_query.casefold().strip()
         if not needle:
             return tuple(range(len(self.files)))
-        return tuple(
-            index
-            for index, name in enumerate(self.files)
-            if needle in name.casefold()
-        )
+        return tuple(index for index, name in enumerate(self.files) if needle in name.casefold())
 
     @property
     def selected_tape_path(self) -> Path | None:
@@ -149,6 +114,8 @@ class TouchUIController:
             self._handle_settings(action)
         elif self.screen is Screen.OUTPUT_LEVEL:
             self._handle_output_level(action)
+        elif self.screen == UPDATE_SCREEN:
+            self._handle_updates(action)
         elif self.screen is Screen.DIRECTORIES:
             self._handle_directories(action)
         elif self.screen in {Screen.AUDIO_PLAYBACK, Screen.AUDIO_CAPTURE}:
@@ -157,286 +124,153 @@ class TouchUIController:
             self._handle_power(action)
 
     def _handle_home(self, action: str) -> None:
-        if action == "files":
-            self.screen = Screen.FILES
-        elif action == "new":
-            self._stop_transport()
-            self.editor = MultiTapEditor()
-            self.screen = Screen.FILENAME
-        elif action == "settings":
-            self.screen = Screen.SETTINGS
+        if action == "files": self.screen = Screen.FILES
+        elif action == "new": self._stop_transport(); self.editor = MultiTapEditor(); self.screen = Screen.FILENAME
+        elif action == "settings": self.screen = Screen.SETTINGS
         elif action == "play":
-            if self.state.tape_name is None:
-                self.state = self.state.next_revision(error="SELECT A TAPE")
-            else:
-                self.state = self.state.next_revision(
-                    transport=TransportState.PLAYING,
-                    position_seconds=0.0,
-                    duration_seconds=None,
-                    error=None,
-                )
-        elif action == "stop":
-            self.state = self.state.next_revision(transport=TransportState.STOPPED)
+            if self.state.tape_name is None: self.state = self.state.next_revision(error="SELECT A TAPE")
+            else: self.state = self.state.next_revision(transport=TransportState.PLAYING, position_seconds=0.0, duration_seconds=None, error=None)
+        elif action == "stop": self.state = self.state.next_revision(transport=TransportState.STOPPED)
         elif action == "record":
-            if self.state.tape_name is None:
-                self.state = self.state.next_revision(error="NAME THE TAPE")
-            else:
-                self.state = self.state.next_revision(
-                    transport=TransportState.RECORDING,
-                    error=None,
-                )
-        elif action == "rewind":
-            self.state = self.state.next_revision(position_seconds=0.0)
+            if self.state.tape_name is None: self.state = self.state.next_revision(error="NAME THE TAPE")
+            else: self.state = self.state.next_revision(transport=TransportState.RECORDING, error=None)
+        elif action == "rewind": self.state = self.state.next_revision(position_seconds=0.0)
 
     def _handle_files(self, action: str) -> None:
-        if action == "back":
-            self.screen = Screen.HOME
-            return
-        if action == "search":
-            self.editor = MultiTapEditor(text=self.search_query)
-            self.screen = Screen.SEARCH
-            return
-        if action == "up":
-            self.selected_file = max(0, self.selected_file - 1)
-            self._ensure_selection_visible()
-            return
+        if action == "back": self.screen = Screen.HOME; return
+        if action == "search": self.editor = MultiTapEditor(text=self.search_query); self.screen = Screen.SEARCH; return
+        if action == "up": self.selected_file = max(0, self.selected_file - 1); self._ensure_selection_visible(); return
         if action == "down":
             files = self.filtered_files
-            if files:
-                self.selected_file = min(len(files) - 1, self.selected_file + 1)
-                self._ensure_selection_visible()
+            if files: self.selected_file = min(len(files) - 1, self.selected_file + 1); self._ensure_selection_visible()
             return
-        if action == "group-up":
-            self._jump_file_group(-1)
-            return
-        if action == "group-down":
-            self._jump_file_group(1)
-            return
-        if action == "open-selected":
-            self._open_file(self.selected_file)
-            return
+        if action == "group-up": self._jump_file_group(-1); return
+        if action == "group-down": self._jump_file_group(1); return
+        if action == "open-selected": self._open_file(self.selected_file); return
         if action.startswith("open:"):
-            try:
-                index = int(action.split(":", 1)[1])
-            except ValueError:
-                return
+            try: index = int(action.split(":", 1)[1])
+            except ValueError: return
             self._open_file(index)
 
     def _handle_filename(self, action: str) -> None:
-        if action == "cancel":
-            self.screen = Screen.HOME
+        if action == "cancel": self.screen = Screen.HOME
         elif action == "save":
             name = self.editor.text.strip() or "UNTITLED"
-            if "." not in Path(name).name:
-                name += ".TZX"
-            self.state = self.state.next_revision(
-                tape_name=name,
-                transport=TransportState.STOPPED,
-                position_seconds=0.0,
-                duration_seconds=None,
-            )
+            if "." not in Path(name).name: name += ".TZX"
+            self.state = self.state.next_revision(tape_name=name, transport=TransportState.STOPPED, position_seconds=0.0, duration_seconds=None)
             self.screen = Screen.HOME
-        elif action.startswith("key:"):
-            self.editor.press(action.split(":", 1)[1])
+        elif action.startswith("key:"): self.editor.press(action.split(":", 1)[1])
 
     def _handle_search(self, action: str) -> None:
-        if action == "cancel":
-            self.screen = Screen.FILES
-        elif action == "apply-search":
-            self.search_query = self.editor.text.strip()
-            self.selected_file = 0
-            self.file_offset = 0
-            self.screen = Screen.FILES
-        elif action == "letters":
-            self.screen = Screen.LETTERS
-        elif action.startswith("key:"):
-            self.editor.press(action.split(":", 1)[1])
+        if action == "cancel": self.screen = Screen.FILES
+        elif action == "apply-search": self.search_query = self.editor.text.strip(); self.selected_file = 0; self.file_offset = 0; self.screen = Screen.FILES
+        elif action == "letters": self.screen = Screen.LETTERS
+        elif action.startswith("key:"): self.editor.press(action.split(":", 1)[1])
 
     def _handle_letters(self, action: str) -> None:
-        if action == "back":
-            self.screen = Screen.SEARCH
-            return
-        if not action.startswith("jump:"):
-            return
+        if action == "back": self.screen = Screen.SEARCH; return
+        if not action.startswith("jump:"): return
         initial = action.split(":", 1)[1].upper()
-        if initial not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ#":
-            return
+        if initial not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ#": return
         self.search_query = ""
         for index, name in enumerate(self.files):
             if self._file_group(name) == initial:
-                self.selected_file = index
-                self.file_offset = index
-                self.screen = Screen.FILES
-                return
+                self.selected_file = index; self.file_offset = index; self.screen = Screen.FILES; return
 
     def _handle_settings(self, action: str) -> None:
-        if action == "back":
-            self.screen = Screen.HOME
-        elif action == "settings-up":
-            self.settings_offset = max(0, self.settings_offset - 1)
-        elif action == "settings-down":
-            maximum = max(0, self.settings_entry_count - self.visible_settings_count)
-            self.settings_offset = min(maximum, self.settings_offset + 1)
-        elif action == "power":
-            self.screen = Screen.POWER
-        elif action == "directories" and self.directory_browser is not None:
-            self.directory_selected = 0
-            self.directory_offset = 0
-            self.screen = Screen.DIRECTORIES
-        elif action == "playback-device":
-            self.audio_offset = 0
-            self.screen = Screen.AUDIO_PLAYBACK
-        elif action == "capture-device":
-            self.audio_offset = 0
-            self.screen = Screen.AUDIO_CAPTURE
-        elif action == "output-level":
-            self.screen = Screen.OUTPUT_LEVEL
+        if action == "back": self.screen = Screen.HOME
+        elif action == "settings-up": self.settings_offset = max(0, self.settings_offset - 1)
+        elif action == "settings-down": self.settings_offset = min(max(0, self.settings_entry_count - self.visible_settings_count), self.settings_offset + 1)
+        elif action == "power": self.screen = Screen.POWER
+        elif action == "directories" and self.directory_browser is not None: self.directory_selected = 0; self.directory_offset = 0; self.screen = Screen.DIRECTORIES
+        elif action == "playback-device": self.audio_offset = 0; self.screen = Screen.AUDIO_PLAYBACK
+        elif action == "capture-device": self.audio_offset = 0; self.screen = Screen.AUDIO_CAPTURE
+        elif action == "output-level": self.screen = Screen.OUTPUT_LEVEL
+        elif action == "updates": self.screen = UPDATE_SCREEN
+
+    def _handle_updates(self, action: str) -> None:
+        if action == "back": self.screen = Screen.SETTINGS
 
     def _handle_output_level(self, action: str) -> None:
-        if action == "back":
-            self.screen = Screen.SETTINGS
-        elif action == "volume-down":
-            self._set_output_level(self.output_level - 5)
-        elif action == "volume-up":
-            self._set_output_level(self.output_level + 5)
+        if action == "back": self.screen = Screen.SETTINGS
+        elif action == "volume-down": self._set_output_level(self.output_level - 5)
+        elif action == "volume-up": self._set_output_level(self.output_level + 5)
         elif action == "volume-mute":
-            if self.output_level > 0:
-                self.previous_output_level = self.output_level
-                self.output_level = 0
-            else:
-                self.output_level = max(5, min(100, self.previous_output_level))
+            if self.output_level > 0: self.previous_output_level = self.output_level; self.output_level = 0
+            else: self.output_level = max(5, min(100, self.previous_output_level))
 
     def _handle_audio_devices(self, action: str) -> None:
         devices = self._current_audio_devices()
-        if action == "back":
-            self.screen = Screen.SETTINGS
-        elif action == "audio-up":
-            self.audio_offset = max(0, self.audio_offset - 1)
-        elif action == "audio-down":
-            maximum = max(0, len(devices) - self.visible_audio_count)
-            self.audio_offset = min(maximum, self.audio_offset + 1)
+        if action == "back": self.screen = Screen.SETTINGS
+        elif action == "audio-up": self.audio_offset = max(0, self.audio_offset - 1)
+        elif action == "audio-down": self.audio_offset = min(max(0, len(devices) - self.visible_audio_count), self.audio_offset + 1)
         elif action.startswith("select-audio:"):
-            try:
-                index = int(action.split(":", 1)[1])
-                device = devices[index]
-            except (ValueError, IndexError):
-                return
-            if self.screen is Screen.AUDIO_PLAYBACK:
-                self.selected_playback_device = device.alsa_name
-            else:
-                self.selected_capture_device = device.alsa_name
+            try: index = int(action.split(":", 1)[1]); device = devices[index]
+            except (ValueError, IndexError): return
+            if self.screen is Screen.AUDIO_PLAYBACK: self.selected_playback_device = device.alsa_name
+            else: self.selected_capture_device = device.alsa_name
             self.screen = Screen.SETTINGS
 
     def _current_audio_devices(self) -> Sequence[AudioDevice]:
-        if self.screen is Screen.AUDIO_PLAYBACK:
-            return self.playback_devices
-        return self.capture_devices
+        return self.playback_devices if self.screen is Screen.AUDIO_PLAYBACK else self.capture_devices
 
     def _handle_directories(self, action: str) -> None:
         browser = self.directory_browser
-        if browser is None:
-            self.screen = Screen.SETTINGS
-            return
+        if browser is None: self.screen = Screen.SETTINGS; return
         directories = browser.directories()
-        if action == "back":
-            self.screen = Screen.SETTINGS
-        elif action == "parent":
-            browser.parent()
-            self.directory_selected = 0
-            self.directory_offset = 0
-        elif action == "directory-up":
-            self.directory_selected = max(0, self.directory_selected - 1)
-            self._ensure_directory_visible()
-        elif action == "directory-down" and directories:
-            self.directory_selected = min(
-                len(directories) - 1,
-                self.directory_selected + 1,
-            )
-            self._ensure_directory_visible()
-        elif action == "use-directory":
-            self.selected_storage_path = browser.current
-            self.screen = Screen.SETTINGS
+        if action == "back": self.screen = Screen.SETTINGS
+        elif action == "parent": browser.parent(); self.directory_selected = 0; self.directory_offset = 0
+        elif action == "directory-up": self.directory_selected = max(0, self.directory_selected - 1); self._ensure_directory_visible()
+        elif action == "directory-down" and directories: self.directory_selected = min(len(directories) - 1, self.directory_selected + 1); self._ensure_directory_visible()
+        elif action == "use-directory": self.selected_storage_path = browser.current; self.screen = Screen.SETTINGS
         elif action.startswith("directory:"):
-            try:
-                index = int(action.split(":", 1)[1])
-                browser.enter(directories[index])
-            except (ValueError, IndexError, DirectoryUnavailable):
-                return
-            self.directory_selected = 0
-            self.directory_offset = 0
+            try: index = int(action.split(":", 1)[1]); browser.enter(directories[index])
+            except (ValueError, IndexError, DirectoryUnavailable): return
+            self.directory_selected = 0; self.directory_offset = 0
 
     def _handle_power(self, action: str) -> None:
-        if action == "cancel":
-            self.screen = Screen.SETTINGS
-        elif action == "confirm-poweroff":
-            self._stop_transport()
-            self.shutdown_requested = True
+        if action == "cancel": self.screen = Screen.SETTINGS
+        elif action == "confirm-poweroff": self._stop_transport(); self.shutdown_requested = True
 
     def _open_file(self, index: int) -> None:
         files = self.filtered_files
-        if not 0 <= index < len(files):
-            return
-        self.selected_file = index
-        self._ensure_selection_visible()
-        self.state = self.state.next_revision(
-            tape_name=files[index],
-            transport=TransportState.STOPPED,
-            position_seconds=0.0,
-            duration_seconds=None,
-        )
+        if not 0 <= index < len(files): return
+        self.selected_file = index; self._ensure_selection_visible()
+        self.state = self.state.next_revision(tape_name=files[index], transport=TransportState.STOPPED, position_seconds=0.0, duration_seconds=None)
         self.screen = Screen.HOME
 
     @staticmethod
     def _file_group(name: str) -> str:
-        first = name[:1].upper()
-        return first if "A" <= first <= "Z" else "#"
+        first = name[:1].upper(); return first if "A" <= first <= "Z" else "#"
 
     def _jump_file_group(self, direction: int) -> None:
         files = self.filtered_files
-        if not files or not 0 <= self.selected_file < len(files):
-            return
+        if not files or not 0 <= self.selected_file < len(files): return
         current_group = self._file_group(files[self.selected_file])
         if direction > 0:
             index = self.selected_file + 1
-            while index < len(files) and self._file_group(files[index]) == current_group:
-                index += 1
-            if index >= len(files):
-                return
+            while index < len(files) and self._file_group(files[index]) == current_group: index += 1
+            if index >= len(files): return
         else:
             index = self.selected_file - 1
-            while index >= 0 and self._file_group(files[index]) == current_group:
-                index -= 1
-            if index < 0:
-                return
+            while index >= 0 and self._file_group(files[index]) == current_group: index -= 1
+            if index < 0: return
             target_group = self._file_group(files[index])
-            while index > 0 and self._file_group(files[index - 1]) == target_group:
-                index -= 1
-        self.selected_file = index
-        self.file_offset = index
+            while index > 0 and self._file_group(files[index - 1]) == target_group: index -= 1
+        self.selected_file = index; self.file_offset = index
 
     def _set_output_level(self, level: int) -> None:
         level = max(0, min(100, int(level)))
-        if level > 0:
-            self.previous_output_level = level
+        if level > 0: self.previous_output_level = level
         self.output_level = level
 
     def _ensure_selection_visible(self) -> None:
-        if self.selected_file < self.file_offset:
-            self.file_offset = self.selected_file
-        elif self.selected_file >= self.file_offset + self.visible_file_count:
-            self.file_offset = self.selected_file - self.visible_file_count + 1
+        if self.selected_file < self.file_offset: self.file_offset = self.selected_file
+        elif self.selected_file >= self.file_offset + self.visible_file_count: self.file_offset = self.selected_file - self.visible_file_count + 1
 
     def _ensure_directory_visible(self) -> None:
-        if self.directory_selected < self.directory_offset:
-            self.directory_offset = self.directory_selected
-        elif (
-            self.directory_selected
-            >= self.directory_offset + self.visible_directory_count
-        ):
-            self.directory_offset = (
-                self.directory_selected - self.visible_directory_count + 1
-            )
+        if self.directory_selected < self.directory_offset: self.directory_offset = self.directory_selected
+        elif self.directory_selected >= self.directory_offset + self.visible_directory_count: self.directory_offset = self.directory_selected - self.visible_directory_count + 1
 
     def _stop_transport(self) -> None:
-        if self.state.transport is not TransportState.STOPPED:
-            self.state = self.state.next_revision(transport=TransportState.STOPPED)
+        if self.state.transport is not TransportState.STOPPED: self.state = self.state.next_revision(transport=TransportState.STOPPED)
