@@ -87,7 +87,7 @@ If `assets/fonts/bescii.ttf` exists, the preview tool uses it automatically.
 Otherwise Pillow's fallback font is used so the layout remains testable while a
 final redistributable pixel-font asset is being selected.
 
-## 6. Run the interactive mock UI
+## 6. Run the interactive UI
 
 With the tested TFT, XPT2046 and calibration in place:
 
@@ -95,13 +95,12 @@ With the tested TFT, XPT2046 and calibration in place:
 PYTHONPATH=src .venv/bin/python tools/ui_touch_demo.py
 ```
 
-The demo shows the splash screen and allows touch navigation through Home,
-Files, Filename and Settings. PLAY/STOP/REC, file selection and SAVE only change
-mock state at this stage; the demo deliberately does not access audio, tape
-parsing or storage.
+The application shows the production splash from
+`assets/branding/zxdeck.png` and then opens the touch UI. The same branding
+asset is also used by the optional early-boot splash described below.
 
-Use `--no-splash` to skip the startup image. `--font PATH` can point at a chosen
-pixel font during visual experiments.
+Use `--no-splash` to skip the application startup image. `--font PATH` can
+point at a chosen pixel font during visual experiments.
 
 ## Configuration profiles
 
@@ -110,28 +109,62 @@ pixel font during visual experiments.
 - `config/touch-calibration.zxdeck.json`: tested calibration for this physical
   prototype and portrait orientation.
 
-## 7. Install automatic startup
+## 7. Install automatic startup and the early boot splash
 
-After tests pass, install a system service generated for the absolute path of
-the current checkout:
+After tests pass, install the generated systemd services for the absolute path
+of the current checkout:
 
 ```bash
 sudo .venv/bin/python tools/install_service.py --user vejin
 ```
 
-The installer writes `/etc/systemd/system/zxdeck.service`, reloads systemd and
-enables the service immediately and for future boots. The application runs as
-the unprivileged user with only the supplementary `spi` and `gpio` groups. Its
-confirmed Power Off screen calls `sudo -n systemctl poweroff`; configure a
-matching non-interactive sudo policy before enabling that action.
+The installer writes and enables two services:
+
+- `/etc/systemd/system/zxdeck-splash.service` draws
+  `assets/branding/zxdeck.png` as early as practical during boot and exits;
+- `/etc/systemd/system/zxdeck.service` starts the normal ZX Deck application.
+
+The splash service is deliberately small. It waits only for the local
+filesystem and the SPI device, initializes the ILI9341-compatible display,
+draws the same production image used by the application and exits. It is
+ordered before `basic.target`, so on a normal Raspberry Pi OS installation it
+should replace most of the otherwise long white-screen period with the ZX Deck
+branding image.
+
+This cannot eliminate the very first white interval after power-on: the TFT
+backlight is powered before Linux is able to initialize and drive the display.
+The purpose of the early splash is to make that interval as short as practical
+without adding extra display hardware.
+
+To install ZX Deck without the early boot splash:
+
+```bash
+sudo .venv/bin/python tools/install_service.py --user vejin --no-boot-splash
+```
+
+That option also disables and removes a previously installed
+`zxdeck-splash.service` unit. The production image itself remains in the
+repository because the normal application uses it too.
+
+The application runs as the unprivileged user with only the supplementary
+`spi` and `gpio` groups. Its confirmed Power Off screen calls
+`sudo -n systemctl poweroff`; configure a matching non-interactive sudo policy
+before enabling that action.
 
 Useful operations:
 
 ```bash
+sudo systemctl status zxdeck-splash.service
 sudo systemctl status zxdeck.service
 sudo systemctl restart zxdeck.service
+sudo journalctl -u zxdeck-splash.service -b
 sudo journalctl -u zxdeck.service -f
 ```
+
+After changing the branding image, a normal `git pull` is enough for both the
+early splash and the application splash to use the new version on the next
+start. No separate 240x320 splash asset is required; if scaling is necessary,
+ZX Deck uses nearest-neighbour resizing to preserve hard pixel edges.
 
 Do not commit newly generated runtime calibration files, logs, camera images,
 virtual environments or Python caches.

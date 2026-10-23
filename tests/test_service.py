@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-from zxdeck.service import render_systemd_unit
+from zxdeck.service import render_systemd_splash_unit, render_systemd_unit
 
 
 class ServiceUnitTests(unittest.TestCase):
@@ -16,6 +16,18 @@ class ServiceUnitTests(unittest.TestCase):
         self.assertIn("/opt/zxdeck/.venv/bin/python", unit)
         self.assertIn("--allow-poweroff", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
+
+    def test_splash_unit_runs_before_basic_target(self) -> None:
+        unit = render_systemd_splash_unit(Path("/opt/zxdeck"), "deck")
+
+        self.assertIn("Description=ZX Deck early boot splash", unit)
+        self.assertIn("DefaultDependencies=no", unit)
+        self.assertIn("After=local-fs.target", unit)
+        self.assertIn("Before=basic.target", unit)
+        self.assertIn("User=deck", unit)
+        self.assertIn("SupplementaryGroups=spi gpio", unit)
+        self.assertIn("/opt/zxdeck/tools/boot_splash.py", unit)
+        self.assertIn("WantedBy=basic.target", unit)
 
 
 if __name__ == "__main__":
