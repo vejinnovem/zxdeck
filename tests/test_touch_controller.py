@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 
 from zxdeck.core.state import DeckState, TransportState
+from zxdeck.audio import AudioDevice
 from zxdeck.frontends.touch import Screen, TouchUIController
 from zxdeck.storage import DirectoryBrowser
 
@@ -172,6 +173,26 @@ class TouchUIControllerTests(unittest.TestCase):
         controller.handle_action("confirm-poweroff")
         self.assertTrue(controller.shutdown_requested)
         self.assertEqual(TransportState.STOPPED, controller.state.transport)
+
+    def test_audio_device_pickers_save_playback_and_capture_choices(self) -> None:
+        playback = AudioDevice("USB output", "plughw:CARD=USB,DEV=0")
+        capture = AudioDevice("USB input", "plughw:CARD=USB,DEV=1")
+        controller = TouchUIController(
+            FILES,
+            playback_devices=(playback,),
+            capture_devices=(capture,),
+        )
+
+        controller.handle_action("settings")
+        controller.handle_action("playback-device")
+        self.assertEqual(Screen.AUDIO_PLAYBACK, controller.screen)
+        controller.handle_action("select-audio:0")
+        self.assertEqual(playback.alsa_name, controller.selected_playback_device)
+        self.assertEqual(Screen.SETTINGS, controller.screen)
+
+        controller.handle_action("capture-device")
+        controller.handle_action("select-audio:0")
+        self.assertEqual(capture.alsa_name, controller.selected_capture_device)
 
 
 if __name__ == "__main__":

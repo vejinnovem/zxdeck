@@ -29,7 +29,8 @@ through an explicit development flag.
 3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad. Entering this
    screen always stops transport; only an explicit REC press may start mock
    recording.
-4. Settings: tape-directory selection and a confirmed system Power Off action.
+4. Settings: tape-directory selection, separate ALSA playback/capture device
+   pickers and a confirmed system Power Off action.
 5. Directory picker: directory-only Linux navigation constrained by the
    configured browse root.
 

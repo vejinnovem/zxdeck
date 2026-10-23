@@ -13,6 +13,19 @@ from zxdeck.frontends.touch.renderer import marquee_offset
 
 @unittest.skipIf(ImageChops is None, "Pillow is not installed")
 class TouchRendererTests(unittest.TestCase):
+    def test_settings_and_audio_picker_have_separate_large_targets(self) -> None:
+        renderer = TouchRenderer()
+        settings = renderer.render_settings()
+        picker = renderer.render_audio_devices(
+            "PLAYBACK DEVICE",
+            (("USB Audio", "plughw:CARD=USB,DEV=0"),),
+            selected_device="plughw:CARD=USB,DEV=0",
+        )
+
+        self.assertEqual("playback-device", settings.action_at(120, 110))
+        self.assertEqual("capture-device", settings.action_at(120, 165))
+        self.assertEqual("select-audio:0", picker.action_at(120, 50))
+        self.assertEqual("back", picker.action_at(40, 295))
     def test_search_links_to_letter_grid_with_large_separate_targets(self) -> None:
         renderer = TouchRenderer()
         search = renderer.render_search(MultiTapEditor())

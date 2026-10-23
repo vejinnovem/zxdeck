@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
+from zxdeck.audio import AudioDevice
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.storage import DirectoryBrowser, DirectoryUnavailable
 
@@ -37,6 +38,12 @@ class TouchUIController:
     directory_selected: int = 0
     directory_offset: int = 0
     visible_directory_count: int = 5
+    playback_devices: Sequence[AudioDevice] = ()
+    capture_devices: Sequence[AudioDevice] = ()
+    selected_playback_device: str = "default"
+    selected_capture_device: str = "default"
+    audio_offset: int = 0
+    visible_audio_count: int = 5
 
     def render(
         self,
@@ -67,13 +74,30 @@ class TouchUIController:
         if self.screen is Screen.LETTERS:
             return renderer.render_letters()
         if self.screen is Screen.SETTINGS:
-            return renderer.render_settings()
+            return renderer.render_settings(
+                playback_device=self.selected_playback_device,
+                capture_device=self.selected_capture_device,
+            )
         if self.screen is Screen.DIRECTORIES and self.directory_browser is not None:
             return renderer.render_directories(
                 self.directory_browser.current,
                 self.directory_browser.directories(),
                 selected=self.directory_selected,
                 offset=self.directory_offset,
+            )
+        if self.screen in {Screen.AUDIO_PLAYBACK, Screen.AUDIO_CAPTURE}:
+            devices = self._current_audio_devices()
+            selected = (
+                self.selected_playback_device
+                if self.screen is Screen.AUDIO_PLAYBACK
+                else self.selected_capture_device
+            )
+            title = "PLAYBACK DEVICE" if self.screen is Screen.AUDIO_PLAYBACK else "CAPTURE DEVICE"
+            return renderer.render_audio_devices(
+                title,
+                tuple((device.name, device.alsa_name) for device in devices),
+                selected_device=selected,
+                offset=self.audio_offset,
             )
         return renderer.render_power(requested=self.shutdown_requested)
 
@@ -116,6 +140,8 @@ class TouchUIController:
             self._handle_settings(action)
         elif self.screen is Screen.DIRECTORIES:
             self._handle_directories(action)
+        elif self.screen in {Screen.AUDIO_PLAYBACK, Screen.AUDIO_CAPTURE}:
+            self._handle_audio_devices(action)
         elif self.screen is Screen.POWER:
             self._handle_power(action)
 
@@ -233,6 +259,38 @@ class TouchUIController:
             self.directory_selected = 0
             self.directory_offset = 0
             self.screen = Screen.DIRECTORIES
+        elif action == "playback-device":
+            self.audio_offset = 0
+            self.screen = Screen.AUDIO_PLAYBACK
+        elif action == "capture-device":
+            self.audio_offset = 0
+            self.screen = Screen.AUDIO_CAPTURE
+
+    def _handle_audio_devices(self, action: str) -> None:
+        devices = self._current_audio_devices()
+        if action == "back":
+            self.screen = Screen.SETTINGS
+        elif action == "audio-up":
+            self.audio_offset = max(0, self.audio_offset - 1)
+        elif action == "audio-down":
+            maximum = max(0, len(devices) - self.visible_audio_count)
+            self.audio_offset = min(maximum, self.audio_offset + 1)
+        elif action.startswith("select-audio:"):
+            try:
+                index = int(action.split(":", 1)[1])
+                device = devices[index]
+            except (ValueError, IndexError):
+                return
+            if self.screen is Screen.AUDIO_PLAYBACK:
+                self.selected_playback_device = device.alsa_name
+            else:
+                self.selected_capture_device = device.alsa_name
+            self.screen = Screen.SETTINGS
+
+    def _current_audio_devices(self) -> Sequence[AudioDevice]:
+        if self.screen is Screen.AUDIO_PLAYBACK:
+            return self.playback_devices
+        return self.capture_devices
 
     def _handle_directories(self, action: str) -> None:
         browser = self.directory_browser

@@ -42,6 +42,8 @@ class Screen(str, Enum):
     LETTERS = "letters"
     SETTINGS = "settings"
     DIRECTORIES = "directories"
+    AUDIO_PLAYBACK = "audio_playback"
+    AUDIO_CAPTURE = "audio_capture"
     POWER = "power"
 
 
@@ -321,18 +323,45 @@ class TouchRenderer:
         targets.append(HitTarget("back", back_rect))
         return RenderedScreen(image, tuple(targets))
 
-    def render_settings(self) -> RenderedScreen:
+    def render_settings(
+        self,
+        *,
+        playback_device: str = "default",
+        capture_device: str = "default",
+    ) -> RenderedScreen:
         image, draw = self._new_canvas()
         targets: list[HitTarget] = []
         self._header(draw, "SETTINGS", "DEVICE")
 
-        library_rect = (20, 65, 220, 115)
-        power_rect = (20, 145, 220, 195)
+        library_rect = (16, 36, 224, 82)
+        playback_rect = (16, 91, 224, 137)
+        capture_rect = (16, 146, 224, 192)
+        power_rect = (16, 211, 224, 257)
         self._button(draw, library_rect, "TAPE DIRECTORY", accent=CYAN)
+        self._button(draw, playback_rect, "PLAYBACK", accent=GREEN)
+        self._button(draw, capture_rect, "CAPTURE", accent=GREEN)
         self._button(draw, power_rect, "POWER OFF", accent=RED)
+        self._right_text(
+            draw,
+            self._short_device(playback_device),
+            216,
+            122,
+            size=7,
+            fill=DIM,
+        )
+        self._right_text(
+            draw,
+            self._short_device(capture_device),
+            216,
+            177,
+            size=7,
+            fill=DIM,
+        )
         targets.extend(
             (
                 HitTarget("directories", library_rect),
+                HitTarget("playback-device", playback_rect),
+                HitTarget("capture-device", capture_rect),
                 HitTarget("power", power_rect),
             )
         )
@@ -340,6 +369,56 @@ class TouchRenderer:
         back_rect = (0, 276, 240, 320)
         self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
         targets.append(HitTarget("back", back_rect))
+        return RenderedScreen(image, tuple(targets))
+
+    def render_audio_devices(
+        self,
+        title: str,
+        devices: Sequence[tuple[str, str]],
+        *,
+        selected_device: str,
+        offset: int = 0,
+    ) -> RenderedScreen:
+        image, draw = self._new_canvas()
+        targets: list[HitTarget] = []
+        self._header(draw, title, f"{len(devices)}")
+
+        if not devices:
+            self._center_text(draw, "NO AUDIO DEVICES", 125, size=12, fill=RED)
+            self._center_text(draw, "CONNECT USB AND TRY AGAIN", 158, size=8)
+        for row, (name, alsa_name) in enumerate(devices[offset : offset + 5]):
+            absolute_index = offset + row
+            top = 34 + row * 45
+            rect = (8, top, 232, top + 40)
+            active = alsa_name == selected_device
+            draw.rectangle(
+                rect,
+                fill=(30, 60, 65) if active else DARK,
+                outline=GREEN if active else CYAN,
+            )
+            self._text(draw, name[:27], (14, top + 7), size=8)
+            self._text(
+                draw,
+                self._short_device(alsa_name),
+                (14, top + 23),
+                size=7,
+                fill=GREEN if active else DIM,
+            )
+            targets.append(HitTarget(f"select-audio:{absolute_index}", rect))
+
+        back_rect = (0, 276, 80, 320)
+        up_rect = (80, 276, 160, 320)
+        down_rect = (160, 276, 240, 320)
+        self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
+        self._button(draw, up_rect, "UP", accent=YELLOW, squared=True)
+        self._button(draw, down_rect, "DOWN", accent=YELLOW, squared=True)
+        targets.extend(
+            (
+                HitTarget("back", back_rect),
+                HitTarget("audio-up", up_rect),
+                HitTarget("audio-down", down_rect),
+            )
+        )
         return RenderedScreen(image, tuple(targets))
 
     def render_directories(
@@ -433,6 +512,10 @@ class TouchRenderer:
         if len(value) <= limit:
             return value
         return "..." + value[-(limit - 3) :]
+
+    @staticmethod
+    def _short_device(value: str, limit: int = 29) -> str:
+        return value if len(value) <= limit else "..." + value[-(limit - 3) :]
 
     def _header(self, draw, left: str, right: str) -> None:
         draw.rectangle((0, 0, WIDTH, 25), fill=(10, 10, 10))

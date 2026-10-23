@@ -62,8 +62,21 @@ def main() -> int:
     filename = renderer.render_filename(editor)
     filename.image.save(args.output / "filename.png")
 
-    settings = renderer.render_settings()
+    settings = renderer.render_settings(
+        playback_device="plughw:CARD=USB,DEV=0",
+        capture_device="plughw:CARD=USB,DEV=1",
+    )
     settings.image.save(args.output / "settings.png")
+
+    audio = renderer.render_audio_devices(
+        "PLAYBACK DEVICE",
+        (
+            ("vc4-hdmi: HDMI Audio", "plughw:CARD=vc4hdmi,DEV=0"),
+            ("USB Audio: USB Audio", "plughw:CARD=USB,DEV=0"),
+        ),
+        selected_device="plughw:CARD=USB,DEV=0",
+    )
+    audio.image.save(args.output / "audio-devices.png")
 
     search = renderer.render_search(MultiTapEditor(text="DIZZY"))
     search.image.save(args.output / "search.png")

@@ -113,6 +113,8 @@ def _play_worker(path, device, sample_rate, cancelled, events) -> None:
             events.put(PlaybackEvent("error", f"ALSA EXIT {return_code}"))
         else:
             events.put(PlaybackEvent("finished"))
+    except BrokenPipeError:
+        events.put(PlaybackEvent("error", "AUDIO DEVICE UNAVAILABLE"))
     except Exception as exc:
         events.put(PlaybackEvent("error", str(exc)))
     finally:

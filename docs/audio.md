@@ -13,6 +13,12 @@ When the USB interface is connected, list ALSA names with `arecord -L` and
 `aplay -L`. Prefer a stable name such as `plughw:CARD=Device,DEV=0` over a
 numeric index such as `hw:1,0`, because card numbers may change between boots.
 
+The touchscreen Settings screen has separate `PLAYBACK` and `CAPTURE` pickers.
+Opening either picker refreshes the physical ALSA device list. A selection is
+stored in `~/.local/state/zxdeck/audio.json`, outside the checkout, and
+overrides the TOML default on later boots. A newly selected playback endpoint
+is used by the next PLAY action; no service restart is required.
+
 PLAY starts a disposable worker process which opens exactly the configured
 playback device through `aplay`. It decodes the selected TAP/TZX stream and
 writes 44.1 kHz unsigned 8-bit mono PCM through a bounded 32 KiB buffer. STOP

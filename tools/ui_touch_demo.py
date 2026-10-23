@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive ZX Deck application shell for the tested TFT and touchscreen.
-
-The tape library is real. Transport actions still stop at the backend boundary
-until tape parsing and the isolated audio worker are connected.
-"""
+"""Interactive ZX Deck application for the tested TFT and touchscreen."""
 
 from __future__ import annotations
 
@@ -15,7 +11,13 @@ import subprocess
 import time
 
 from zxdeck.config import AppConfig
-from zxdeck.audio import AudioPlayer
+from zxdeck.audio import (
+    AudioPlayer,
+    AudioSelection,
+    list_audio_devices,
+    load_audio_selection,
+    save_audio_selection,
+)
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
 from zxdeck.frontends.touch.frame import crop_rgb565, image_to_rgb565
@@ -39,6 +41,7 @@ DEFAULT_CONFIG = ROOT / "config" / "hardware.zxdeck-pi-zero.toml"
 DEFAULT_APP_CONFIG = ROOT / "config" / "application.zxdeck-pi-zero.toml"
 DEFAULT_FONT = ROOT / "assets" / "fonts" / "bescii.ttf"
 DEFAULT_STORAGE_STATE = Path("~/.local/state/zxdeck/storage-path").expanduser()
+DEFAULT_AUDIO_STATE = Path("~/.local/state/zxdeck/audio.json").expanduser()
 
 MOCK_FILES = (
     "MANIC MINER.TZX",
@@ -56,6 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--app-config", type=Path, default=DEFAULT_APP_CONFIG)
     parser.add_argument("--storage-state", type=Path, default=DEFAULT_STORAGE_STATE)
+    parser.add_argument("--audio-state", type=Path, default=DEFAULT_AUDIO_STATE)
     parser.add_argument("--calibration", type=Path)
     parser.add_argument("--font", type=Path, default=DEFAULT_FONT)
     parser.add_argument("--no-splash", action="store_true")
@@ -121,6 +125,11 @@ def main() -> int:
     args = parse_args()
     config = HardwareConfig.load(args.config)
     app_config = AppConfig.load(args.app_config)
+    audio_selection = load_audio_selection(
+        args.audio_state,
+        default_playback=app_config.audio.playback_device,
+        default_capture=app_config.audio.capture_device,
+    )
     selected_storage_path = load_selected_path(
         args.storage_state,
         app_config.storage.path,
@@ -155,9 +164,13 @@ def main() -> int:
             if selected_storage_path.is_dir()
             else storage_config.browse_root,
         ),
+        playback_devices=list_audio_devices("playback"),
+        capture_devices=list_audio_devices("capture"),
+        selected_playback_device=audio_selection.playback_device,
+        selected_capture_device=audio_selection.capture_device,
     )
     rendered = None
-    player = AudioPlayer(app_config.audio.playback_device)
+    player = AudioPlayer(audio_selection.playback_device)
     running = True
     cursor_visible = True
     cursor_changed_at = time.monotonic()
@@ -286,6 +299,12 @@ def main() -> int:
             wait_for_release()
             previous_storage_path = controller.selected_storage_path
             previous_transport = controller.state.transport
+            previous_playback_device = controller.selected_playback_device
+            previous_capture_device = controller.selected_capture_device
+            if action == "playback-device":
+                controller.playback_devices = list_audio_devices("playback")
+            elif action == "capture-device":
+                controller.capture_devices = list_audio_devices("capture")
             controller.handle_action(action)
 
             if action == "play" and controller.state.transport is TransportState.PLAYING:
@@ -306,6 +325,23 @@ def main() -> int:
             cursor_visible = True
             cursor_changed_at = time.monotonic()
             redraw()
+
+            if (
+                controller.selected_playback_device != previous_playback_device
+                or controller.selected_capture_device != previous_capture_device
+            ):
+                selection = AudioSelection(
+                    controller.selected_playback_device,
+                    controller.selected_capture_device,
+                )
+                save_audio_selection(args.audio_state, selection)
+                player.device = selection.playback_device
+                print(
+                    "Audio devices saved: "
+                    f"playback={selection.playback_device} "
+                    f"capture={selection.capture_device}",
+                    flush=True,
+                )
 
             if (
                 controller.selected_storage_path is not None
