@@ -124,8 +124,8 @@ The installer writes and enables two services:
   `assets/branding/zxdeck.png` as early as practical during boot and exits;
 - `/etc/systemd/system/zxdeck.service` starts the normal ZX Deck application.
 
-The splash service is deliberately small. It waits only for the local
-filesystem and the SPI device, initializes the ILI9341-compatible display,
+The splash service is deliberately small. It waits for the local filesystem and
+for the SPI/GPIO device nodes, initializes the ILI9341-compatible display,
 draws the same production image used by the application and exits. It is
 ordered before `basic.target`, so on a normal Raspberry Pi OS installation it
 should replace most of the otherwise long white-screen period with the ZX Deck
