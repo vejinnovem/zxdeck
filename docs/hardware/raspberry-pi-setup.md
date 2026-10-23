@@ -1,7 +1,12 @@
-# Raspberry Pi setup from a clean clone
+# Raspberry Pi setup and diagnostics
+
+> **Normal users:** the complete step-by-step installation is now in the main
+> `README.md`. You do not need to work through this document to install ZX Deck.
+> This page is the detailed hardware/development reference for diagnostics,
+> manual tests, calibration experiments and service troubleshooting.
 
 The verified target is a 32-bit Raspberry Pi Zero W running Raspberry Pi OS 13
-(trixie). The backend itself is not tied to this model.
+(Trixie). The backend itself is not tied to this model.
 
 ## 1. Enable SPI
 
@@ -27,12 +32,14 @@ The service user needs access to the `spi` and `gpio` groups.
 
 ```bash
 sudo apt update
-sudo apt install git python3-venv python3-spidev python3-lgpio python3-pil
+sudo apt install git python3-venv python3-spidev python3-lgpio python3-pil alsa-utils
 ```
 
 GPIO/SPI and Pillow are intentionally installed by Raspberry Pi OS rather than
-vendored into the repository. Pillow is only needed by the rendered touchscreen
-UI and its preview tools; the backend itself remains independent of it.
+vendored into the repository. `alsa-utils` supplies the `aplay`/`arecord`
+commands used by playback and audio-device discovery. Pillow is only needed by
+the rendered touchscreen UI and its preview tools; the backend itself remains
+independent of it.
 
 ## 3. Clone and prepare Python
 
@@ -49,9 +56,12 @@ used without GPIO/SPI packages when the display is disabled.
 
 The GPIO adapter polls `lgpio` directly. This avoids the background notification
 threads created by a higher-level GPIO wrapper and leaves more of the Pi Zero's
-single CPU core available for future audio work.
+single CPU core available for audio work.
 
-## 4. Run diagnostics
+## 4. Run display/touch diagnostics
+
+These commands are for troubleshooting or hardware bring-up; they are not
+required in the normal README installation path.
 
 ```bash
 PYTHONPATH=src .venv/bin/python tools/display_test.py --hold
@@ -60,20 +70,22 @@ PYTHONPATH=src .venv/bin/python tools/touch_test.py
 
 Use `Ctrl+C` between tests so only one process owns the LCD reset line.
 
-To recalibrate this physical unit without modifying tracked files:
+To calibrate this physical unit:
 
 ```bash
 PYTHONPATH=src .venv/bin/python tools/touch_calibrate.py
 ```
 
 The default output is
-`~/.local/state/zxdeck/touch-calibration.json`. Pass that file to
-`tools/touch_test.py --calibration PATH` when testing the new calibration.
+`~/.local/state/zxdeck/touch-calibration.json`. ZX Deck automatically prefers
+this device-specific file over the calibration stored in the repository. This
+keeps local calibration outside the checkout and avoids Git conflicts during
+updates.
 
 ## 5. Generate UI previews without the LCD
 
-The first UI milestone can be inspected as ordinary 240x320 PNG files before
-it is connected to the real display:
+This is a development-only convenience. The UI can be rendered as ordinary
+240x320 PNG files without accessing Raspberry Pi hardware:
 
 ```bash
 PYTHONPATH=src .venv/bin/python tools/ui_preview.py
@@ -84,12 +96,11 @@ hardware-independent. A Raspberry Pi adapter converts the completed RGB frame
 to big-endian RGB565 and sends it through the existing LCD driver.
 
 If `assets/fonts/bescii.ttf` exists, the preview tool uses it automatically.
-Otherwise Pillow's fallback font is used so the layout remains testable while a
-final redistributable pixel-font asset is being selected.
+Otherwise Pillow's fallback font is used.
 
-## 6. Run the interactive UI
+## 6. Run the interactive UI manually
 
-With the tested TFT, XPT2046 and calibration in place:
+For development or troubleshooting, start the application directly:
 
 ```bash
 PYTHONPATH=src .venv/bin/python tools/ui_touch_demo.py
@@ -97,7 +108,7 @@ PYTHONPATH=src .venv/bin/python tools/ui_touch_demo.py
 
 The application shows the production splash from
 `assets/branding/zxdeck.png` and then opens the touch UI. The same branding
-asset is also used by the optional early-boot splash described below.
+asset is also used by the early-boot splash.
 
 Use `--no-splash` to skip the application startup image. `--font PATH` can
 point at a chosen pixel font during visual experiments.
@@ -106,30 +117,28 @@ point at a chosen pixel font during visual experiments.
 
 - `config/hardware.example.toml`: both display devices disabled.
 - `config/hardware.zxdeck-pi-zero.toml`: tested prototype wiring and speeds.
-- `config/touch-calibration.zxdeck.json`: tested calibration for this physical
-  prototype and portrait orientation.
+- `config/touch-calibration.zxdeck.json`: fallback calibration from the tested
+  development unit. A local calibration in
+  `~/.local/state/zxdeck/touch-calibration.json` takes precedence when present.
 
-## 7. Install automatic startup and the early boot splash
+## 7. Automatic startup and early boot splash
 
-After tests pass, install the generated systemd services for the absolute path
-of the current checkout:
+Normal installation is covered in the README. For reference, the service
+installer is:
 
 ```bash
-sudo .venv/bin/python tools/install_service.py --user vejin
+sudo .venv/bin/python tools/install_service.py
 ```
 
-The installer writes and enables two services:
+It writes and enables two services:
 
 - `/etc/systemd/system/zxdeck-splash.service` draws
   `assets/branding/zxdeck.png` as early as practical during boot and exits;
 - `/etc/systemd/system/zxdeck.service` starts the normal ZX Deck application.
 
-The splash service is deliberately small. It waits for the local filesystem and
-for the SPI/GPIO device nodes, initializes the ILI9341-compatible display,
-draws the same production image used by the application and exits. It is
-ordered before `basic.target`, so on a normal Raspberry Pi OS installation it
-should replace most of the otherwise long white-screen period with the ZX Deck
-branding image.
+The splash service waits for the local filesystem and for the SPI/GPIO device
+nodes, initializes the ILI9341-compatible display, draws the production image
+and exits. It is ordered before `basic.target`.
 
 This cannot eliminate the very first white interval after power-on: the TFT
 backlight is powered before Linux is able to initialize and drive the display.
@@ -139,7 +148,7 @@ without adding extra display hardware.
 To install ZX Deck without the early boot splash:
 
 ```bash
-sudo .venv/bin/python tools/install_service.py --user vejin --no-boot-splash
+sudo .venv/bin/python tools/install_service.py --no-boot-splash
 ```
 
 That option also disables and removes a previously installed
@@ -148,10 +157,12 @@ repository because the normal application uses it too.
 
 The application runs as the unprivileged user with only the supplementary
 `spi` and `gpio` groups. Its confirmed Power Off screen calls
-`sudo -n systemctl poweroff`; configure a matching non-interactive sudo policy
-before enabling that action.
+`sudo -n systemctl poweroff`; the optional sudo policy is described in the main
+README.
 
-Useful operations:
+## Service troubleshooting
+
+Use these only when diagnosing startup problems:
 
 ```bash
 sudo systemctl status zxdeck-splash.service
