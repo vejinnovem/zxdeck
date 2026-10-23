@@ -32,6 +32,11 @@ Repeated presses cycle through the characters assigned to a key. A short pause,
 pressing another key, or explicitly committing the pending character advances
 the cursor.
 
+While a multi-tap character is pending, the filename cursor is hidden. After
+the timeout commits that character, the cursor appears after it and blinks.
+Touch targets invert immediately on press, before the resulting screen is
+rendered, so physical input acknowledgment is distinct from action latency.
+
 Default mapping:
 
 - `1`: `. , ? ! 1`

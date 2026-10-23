@@ -67,6 +67,7 @@ class TouchRenderer:
 
     def __init__(self, *, font_path: str | Path | None = None) -> None:
         self.font_path = Path(font_path) if font_path is not None else None
+        self._fonts: dict[int, object] = {}
 
     def render_home(self, state: DeckState) -> RenderedScreen:
         image, draw = self._new_canvas()
@@ -174,13 +175,19 @@ class TouchRenderer:
         )
         return RenderedScreen(image, tuple(targets))
 
-    def render_filename(self, editor: MultiTapEditor) -> RenderedScreen:
+    def render_filename(
+        self,
+        editor: MultiTapEditor,
+        *,
+        cursor_visible: bool = True,
+    ) -> RenderedScreen:
         image, draw = self._new_canvas()
         targets: list[HitTarget] = []
         self._header(draw, "SAVE AS", editor.mode.value)
 
         draw.rectangle((8, 32, 232, 67), outline=CYAN)
-        value = editor.text[-25:] + "_"
+        show_cursor = cursor_visible and not editor.has_pending_character
+        value = editor.text[-25:] + ("_" if show_cursor else "")
         self._text(draw, value, (14, 44), size=12)
 
         labels = {
@@ -239,12 +246,17 @@ class TouchRenderer:
     def _font(self, size: int):
         from PIL import ImageFont
 
-        if self.font_path is not None and self.font_path.exists():
-            return ImageFont.truetype(str(self.font_path), size=size)
-        try:
-            return ImageFont.load_default(size=size)
-        except TypeError:  # Pillow versions whose default font has no size argument
-            return ImageFont.load_default()
+        font = self._fonts.get(size)
+        if font is None:
+            if self.font_path is not None and self.font_path.exists():
+                font = ImageFont.truetype(str(self.font_path), size=size)
+            else:
+                try:
+                    font = ImageFont.load_default(size=size)
+                except TypeError:  # Pillow versions whose default has no size argument
+                    font = ImageFont.load_default()
+            self._fonts[size] = font
+        return font
 
     def _header(self, draw, left: str, right: str) -> None:
         draw.rectangle((0, 0, WIDTH, 25), fill=(10, 10, 10))

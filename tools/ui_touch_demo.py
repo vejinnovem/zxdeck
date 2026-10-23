@@ -13,7 +13,7 @@ import signal
 import time
 
 from zxdeck.core.state import DeckState, TransportState
-from zxdeck.frontends.touch import TouchRenderer, TouchUIController
+from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
 from zxdeck.frontends.touch.frame import image_to_rgb565
 from zxdeck.frontends.touch.splash import render_splash
 from zxdeck.hardware.calibration import TouchCalibration
@@ -60,6 +60,22 @@ def send_frame(display: ILI9341, rendered) -> None:
     send_image(display, rendered.image)
 
 
+def send_pressed_feedback(display: ILI9341, rendered, action: str) -> None:
+    """Invert only the touched target so feedback reaches the LCD immediately."""
+    from PIL import ImageOps
+
+    target = next(
+        (item for item in reversed(rendered.targets) if item.action == action),
+        None,
+    )
+    if target is None:
+        return
+    left, top, right, bottom = target.rect
+    pressed = ImageOps.invert(rendered.image.crop(target.rect))
+    display.set_window(left, top, right - 1, bottom - 1)
+    display.write_rgb565(image_to_rgb565(pressed))
+
+
 def main() -> int:
     args = parse_args()
     config = HardwareConfig.load(args.config)
@@ -83,6 +99,8 @@ def main() -> int:
     )
     rendered = None
     running = True
+    cursor_visible = True
+    cursor_changed_at = time.monotonic()
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -90,7 +108,7 @@ def main() -> int:
 
     def redraw() -> None:
         nonlocal rendered
-        rendered = controller.render(renderer)
+        rendered = controller.render(renderer, cursor_visible=cursor_visible)
         send_frame(display, rendered)
 
     def wait_for_release() -> None:
@@ -113,10 +131,20 @@ def main() -> int:
         print("ZX Deck interactive UI prototype ready. Press Ctrl+C to stop.", flush=True)
 
         while running:
-            if controller.editor.expire():
-                redraw()
-
+            now = time.monotonic()
             if not touch.pressed:
+                if controller.screen is Screen.FILENAME:
+                    if controller.editor.expire(now=now):
+                        cursor_visible = True
+                        cursor_changed_at = now
+                        redraw()
+                    elif (
+                        not controller.editor.has_pending_character
+                        and now - cursor_changed_at >= 0.5
+                    ):
+                        cursor_visible = not cursor_visible
+                        cursor_changed_at = now
+                        redraw()
                 time.sleep(0.01)
                 continue
 
@@ -131,9 +159,12 @@ def main() -> int:
 
             print(f"touch x={x:3d} y={y:3d} action={action}", flush=True)
 
-            controller.handle_action(action)
-            redraw()
+            send_pressed_feedback(display, rendered, action)
             wait_for_release()
+            controller.handle_action(action)
+            cursor_visible = True
+            cursor_changed_at = time.monotonic()
+            redraw()
 
     finally:
         touch.close()

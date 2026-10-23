@@ -29,7 +29,12 @@ class TouchUIController:
     editor: MultiTapEditor = field(default_factory=MultiTapEditor)
     visible_file_count: int = 6
 
-    def render(self, renderer: TouchRenderer) -> RenderedScreen:
+    def render(
+        self,
+        renderer: TouchRenderer,
+        *,
+        cursor_visible: bool = True,
+    ) -> RenderedScreen:
         if self.screen is Screen.HOME:
             return renderer.render_home(self.state)
         if self.screen is Screen.FILES:
@@ -39,7 +44,10 @@ class TouchUIController:
                 offset=self.file_offset,
             )
         if self.screen is Screen.FILENAME:
-            return renderer.render_filename(self.editor)
+            return renderer.render_filename(
+                self.editor,
+                cursor_visible=cursor_visible,
+            )
         return renderer.render_settings()
 
     def handle_action(self, action: str) -> None:
