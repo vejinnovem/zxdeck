@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+import time
 
 from zxdeck.system import primary_ipv4_address
 
-from .renderer import CYAN, RenderedScreen, TouchRenderer as BaseTouchRenderer
+from .renderer import RenderedScreen, TouchRenderer as BaseTouchRenderer
 
 
 class DeviceTouchRenderer(BaseTouchRenderer):
@@ -21,26 +22,29 @@ class DeviceTouchRenderer(BaseTouchRenderer):
     ) -> None:
         super().__init__(font_path=font_path)
         self._address_provider = address_provider
+        self._cached_address = "NO NETWORK"
+        self._address_checked_at = float("-inf")
+
+    def _network_address(self) -> str:
+        now = time.monotonic()
+        if now - self._address_checked_at >= 5.0:
+            self._cached_address = self._address_provider() or "NO NETWORK"
+            self._address_checked_at = now
+        return self._cached_address
 
     def render_settings(
         self,
         *,
         playback_device: str = "default",
         capture_device: str = "default",
+        output_level: int = 25,
+        offset: int = 0,
+        ip_address: str | None = None,
     ) -> RenderedScreen:
-        rendered = super().render_settings(
+        return super().render_settings(
             playback_device=playback_device,
             capture_device=capture_device,
+            output_level=output_level,
+            offset=offset,
+            ip_address=ip_address or self._network_address(),
         )
-        from PIL import ImageDraw
-
-        address = self._address_provider() or "NO NETWORK"
-        draw = ImageDraw.Draw(rendered.image)
-        self._center_text(draw, f"IP {address}", 198, size=7, fill=CYAN)
-        return rendered
-
-
-# Keep the public frontend API simple: device applications import TouchRenderer
-# from zxdeck.frontends.touch, while tests or future adapters can still import
-# the hardware-independent base renderer directly from .renderer.
-TouchRenderer = DeviceTouchRenderer

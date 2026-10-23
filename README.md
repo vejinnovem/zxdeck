@@ -36,20 +36,25 @@ The tested ILI9341-compatible LCD and XPT2046 touchscreen support has been
 extracted into reusable modules. Standalone diagnostic and calibration tools
 are available.
 
-A first 240x320 touchscreen UI prototype is also present. It renders Home,
-Files, Search, Filename, Settings, Directory and Power screens from
+A first 240x320 touchscreen UI is present. It renders Home, Files, Search,
+Filename, scrollable Settings, Output Level, Directory and Power screens from
 hardware-independent code, includes a classic 3x4 multi-tap phone keypad for
 text entry, and can be previewed as PNGs or run interactively on the tested
-TFT/touch hardware. The Settings screen also shows the current IPv4 address for
-SSH and diagnostics when one is available.
+TFT/touch hardware. The device-facing Settings screen also shows the current
+IPv4 address for SSH and diagnostics. File-list Up/Down supports hold-to-repeat
+and changes to whole-letter-group jumps during a longer hold.
 
 The file browser uses the configured, validated tape library; built-in
 filenames are only available through the explicit `--mock-files` development
-option. PLAY now decodes TAP plus the common TZX standard, turbo, pure-tone,
+option. PLAY decodes TAP plus the common TZX standard, turbo, pure-tone,
 pulse-sequence, pure-data and direct-recording blocks in an isolated process
 and streams unsigned 8-bit mono PCM to the ALSA playback device selected in the
-application configuration. Rare generalized, CSW and control-flow TZX blocks
-fail visibly instead of producing an incorrect signal. Recording and the web
+application configuration. Playback now calculates total generated-signal
+duration and reports progress back to the Home screen. The generated signal has
+a persistent 0-100% software output-level control with large `-`, `MUTE` and
+`+` targets; 25% is the conservative default for state files that do not yet
+contain a saved level. Rare generalized, CSW and control-flow TZX blocks fail
+visibly instead of producing an incorrect signal. Recording and the web
 frontend are not implemented yet.
 
 See:
@@ -57,7 +62,7 @@ See:
 - `docs/architecture.md` for application boundaries;
 - `docs/ui-prototype.md` for the current UI rules and keypad behaviour;
 - `docs/storage.md` for directory selection, removable media and indexing;
-- `docs/audio.md` for stable ALSA device selection;
+- `docs/audio.md` for ALSA selection, playback progress and output level;
 - `docs/network.md` for Wi-Fi, IP display, future Web UI and update rules;
 - `docs/network-file-transfer.md` for optional SMB file transfer on a trusted LAN;
 - `docs/hardware/display.md` for wiring and verified parameters;

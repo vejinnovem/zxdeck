@@ -42,6 +42,11 @@ class TouchUIController:
     capture_devices: Sequence[AudioDevice] = ()
     selected_playback_device: str = "default"
     selected_capture_device: str = "default"
+    output_level: int = 25
+    previous_output_level: int = 25
+    settings_offset: int = 0
+    visible_settings_count: int = 4
+    settings_entry_count: int = 5
     audio_offset: int = 0
     visible_audio_count: int = 5
 
@@ -77,7 +82,11 @@ class TouchUIController:
             return renderer.render_settings(
                 playback_device=self.selected_playback_device,
                 capture_device=self.selected_capture_device,
+                output_level=self.output_level,
+                offset=self.settings_offset,
             )
+        if self.screen is Screen.OUTPUT_LEVEL:
+            return renderer.render_output_level(self.output_level)
         if self.screen is Screen.DIRECTORIES and self.directory_browser is not None:
             return renderer.render_directories(
                 self.directory_browser.current,
@@ -138,6 +147,8 @@ class TouchUIController:
             self._handle_letters(action)
         elif self.screen is Screen.SETTINGS:
             self._handle_settings(action)
+        elif self.screen is Screen.OUTPUT_LEVEL:
+            self._handle_output_level(action)
         elif self.screen is Screen.DIRECTORIES:
             self._handle_directories(action)
         elif self.screen in {Screen.AUDIO_PLAYBACK, Screen.AUDIO_CAPTURE}:
@@ -160,6 +171,8 @@ class TouchUIController:
             else:
                 self.state = self.state.next_revision(
                     transport=TransportState.PLAYING,
+                    position_seconds=0.0,
+                    duration_seconds=None,
                     error=None,
                 )
         elif action == "stop":
@@ -193,6 +206,12 @@ class TouchUIController:
                 self.selected_file = min(len(files) - 1, self.selected_file + 1)
                 self._ensure_selection_visible()
             return
+        if action == "group-up":
+            self._jump_file_group(-1)
+            return
+        if action == "group-down":
+            self._jump_file_group(1)
+            return
         if action == "open-selected":
             self._open_file(self.selected_file)
             return
@@ -213,6 +232,8 @@ class TouchUIController:
             self.state = self.state.next_revision(
                 tape_name=name,
                 transport=TransportState.STOPPED,
+                position_seconds=0.0,
+                duration_seconds=None,
             )
             self.screen = Screen.HOME
         elif action.startswith("key:"):
@@ -242,9 +263,7 @@ class TouchUIController:
             return
         self.search_query = ""
         for index, name in enumerate(self.files):
-            first = name[:1].upper()
-            group = first if "A" <= first <= "Z" else "#"
-            if group == initial:
+            if self._file_group(name) == initial:
                 self.selected_file = index
                 self.file_offset = index
                 self.screen = Screen.FILES
@@ -253,6 +272,11 @@ class TouchUIController:
     def _handle_settings(self, action: str) -> None:
         if action == "back":
             self.screen = Screen.HOME
+        elif action == "settings-up":
+            self.settings_offset = max(0, self.settings_offset - 1)
+        elif action == "settings-down":
+            maximum = max(0, self.settings_entry_count - self.visible_settings_count)
+            self.settings_offset = min(maximum, self.settings_offset + 1)
         elif action == "power":
             self.screen = Screen.POWER
         elif action == "directories" and self.directory_browser is not None:
@@ -265,6 +289,22 @@ class TouchUIController:
         elif action == "capture-device":
             self.audio_offset = 0
             self.screen = Screen.AUDIO_CAPTURE
+        elif action == "output-level":
+            self.screen = Screen.OUTPUT_LEVEL
+
+    def _handle_output_level(self, action: str) -> None:
+        if action == "back":
+            self.screen = Screen.SETTINGS
+        elif action == "volume-down":
+            self._set_output_level(self.output_level - 5)
+        elif action == "volume-up":
+            self._set_output_level(self.output_level + 5)
+        elif action == "volume-mute":
+            if self.output_level > 0:
+                self.previous_output_level = self.output_level
+                self.output_level = 0
+            else:
+                self.output_level = max(5, min(100, self.previous_output_level))
 
     def _handle_audio_devices(self, action: str) -> None:
         devices = self._current_audio_devices()
@@ -341,8 +381,44 @@ class TouchUIController:
         self.state = self.state.next_revision(
             tape_name=files[index],
             transport=TransportState.STOPPED,
+            position_seconds=0.0,
+            duration_seconds=None,
         )
         self.screen = Screen.HOME
+
+    @staticmethod
+    def _file_group(name: str) -> str:
+        first = name[:1].upper()
+        return first if "A" <= first <= "Z" else "#"
+
+    def _jump_file_group(self, direction: int) -> None:
+        files = self.filtered_files
+        if not files or not 0 <= self.selected_file < len(files):
+            return
+        current_group = self._file_group(files[self.selected_file])
+        if direction > 0:
+            index = self.selected_file + 1
+            while index < len(files) and self._file_group(files[index]) == current_group:
+                index += 1
+            if index >= len(files):
+                return
+        else:
+            index = self.selected_file - 1
+            while index >= 0 and self._file_group(files[index]) == current_group:
+                index -= 1
+            if index < 0:
+                return
+            target_group = self._file_group(files[index])
+            while index > 0 and self._file_group(files[index - 1]) == target_group:
+                index -= 1
+        self.selected_file = index
+        self.file_offset = index
+
+    def _set_output_level(self, level: int) -> None:
+        level = max(0, min(100, int(level)))
+        if level > 0:
+            self.previous_output_level = level
+        self.output_level = level
 
     def _ensure_selection_visible(self) -> None:
         if self.selected_file < self.file_offset:

@@ -13,19 +13,37 @@ from zxdeck.frontends.touch.renderer import marquee_offset
 
 @unittest.skipIf(ImageChops is None, "Pillow is not installed")
 class TouchRendererTests(unittest.TestCase):
-    def test_settings_and_audio_picker_have_separate_large_targets(self) -> None:
+    def test_settings_scroll_has_large_targets_and_reveals_power(self) -> None:
         renderer = TouchRenderer()
-        settings = renderer.render_settings()
+        first_page = renderer.render_settings(ip_address="192.168.1.84")
+        second_page = renderer.render_settings(offset=1, output_level=25)
+
+        self.assertEqual("playback-device", first_page.action_at(120, 110))
+        self.assertEqual("capture-device", first_page.action_at(120, 165))
+        self.assertEqual("output-level", first_page.action_at(120, 230))
+        self.assertEqual("back", first_page.action_at(40, 295))
+        self.assertEqual("settings-up", first_page.action_at(120, 295))
+        self.assertEqual("settings-down", first_page.action_at(200, 295))
+        self.assertEqual("power", second_page.action_at(120, 230))
+
+    def test_output_level_screen_has_minus_mute_plus_and_back(self) -> None:
+        renderer = TouchRenderer()
+        level = renderer.render_output_level(25)
+        self.assertEqual("volume-down", level.action_at(40, 220))
+        self.assertEqual("volume-mute", level.action_at(120, 220))
+        self.assertEqual("volume-up", level.action_at(200, 220))
+        self.assertEqual("back", level.action_at(120, 295))
+
+    def test_audio_picker_has_separate_large_targets(self) -> None:
+        renderer = TouchRenderer()
         picker = renderer.render_audio_devices(
             "PLAYBACK DEVICE",
             (("USB Audio", "plughw:CARD=USB,DEV=0"),),
             selected_device="plughw:CARD=USB,DEV=0",
         )
-
-        self.assertEqual("playback-device", settings.action_at(120, 110))
-        self.assertEqual("capture-device", settings.action_at(120, 165))
         self.assertEqual("select-audio:0", picker.action_at(120, 50))
         self.assertEqual("back", picker.action_at(40, 295))
+
     def test_search_links_to_letter_grid_with_large_separate_targets(self) -> None:
         renderer = TouchRenderer()
         search = renderer.render_search(MultiTapEditor())
@@ -61,6 +79,7 @@ class TouchRendererTests(unittest.TestCase):
         self.assertEqual(60, marquee_offset(3.5, 60))
         self.assertEqual(60, marquee_offset(4.0, 60))
         self.assertEqual(30, marquee_offset(5.5, 60))
+
     def test_cursor_is_hidden_while_multitap_character_is_pending(self) -> None:
         renderer = TouchRenderer()
         editor = MultiTapEditor(text="M")

@@ -1,17 +1,15 @@
 """Local 240x320 touchscreen frontend for ZX Deck.
 
-The base renderer remains hardware-independent. The public TouchRenderer adds
-small read-only device status overlays (currently the IPv4 address) without
-moving network management into the UI domain logic.
+The base renderer is hardware-independent. DeviceTouchRenderer adds small
+read-only operating-system status such as the current IPv4 address.
 """
 
 from .controller import TouchUIController
-from .device_renderer import DeviceTouchRenderer, TouchRenderer
+from .device_renderer import DeviceTouchRenderer
 from .keypad import InputMode, MultiTapEditor
-from .renderer import Screen, TouchRenderer as BaseTouchRenderer
+from .renderer import Screen, TouchRenderer
 
 __all__ = [
-    "BaseTouchRenderer",
     "DeviceTouchRenderer",
     "InputMode",
     "MultiTapEditor",

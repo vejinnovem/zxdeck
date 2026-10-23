@@ -54,6 +54,20 @@ class TouchUIControllerTests(unittest.TestCase):
         self.assertEqual(Screen.HOME, controller.screen)
         self.assertEqual("GAME 6.TZX", controller.state.tape_name)
 
+    def test_file_group_jump_skips_whole_letter_group(self) -> None:
+        controller = TouchUIController(
+            ("1942.TAP", "ALPHA.TAP", "ARCADE.TAP", "BETA.TZX", "BRAVO.TAP", "ZED.TAP")
+        )
+        controller.handle_action("files")
+        controller.handle_action("down")
+        self.assertEqual(1, controller.selected_file)
+
+        controller.handle_action("group-down")
+        self.assertEqual(3, controller.selected_file)
+        self.assertEqual(3, controller.file_offset)
+        controller.handle_action("group-up")
+        self.assertEqual(1, controller.selected_file)
+
     def test_tapped_file_is_opened_and_invalid_index_is_ignored(self) -> None:
         controller = TouchUIController(FILES)
         controller.handle_action("files")
@@ -92,6 +106,20 @@ class TouchUIControllerTests(unittest.TestCase):
         controller.handle_action("new")
         controller.handle_action("cancel")
         self.assertEqual(Screen.HOME, controller.screen)
+
+    def test_settings_scroll_and_output_level_controls(self) -> None:
+        controller = TouchUIController(FILES, output_level=25, previous_output_level=25)
+        controller.handle_action("settings")
+        controller.handle_action("settings-down")
+        self.assertEqual(1, controller.settings_offset)
+        controller.handle_action("output-level")
+        self.assertEqual(Screen.OUTPUT_LEVEL, controller.screen)
+        controller.handle_action("volume-up")
+        self.assertEqual(30, controller.output_level)
+        controller.handle_action("volume-mute")
+        self.assertEqual(0, controller.output_level)
+        controller.handle_action("volume-mute")
+        self.assertEqual(30, controller.output_level)
 
     def test_search_filters_virtual_file_list(self) -> None:
         controller = TouchUIController(FILES)

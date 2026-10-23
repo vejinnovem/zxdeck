@@ -40,7 +40,7 @@ class AudioDeviceTests(unittest.TestCase):
     def test_audio_selection_round_trip_and_invalid_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state" / "audio.json"
-            selection = AudioSelection("plughw:CARD=USB,DEV=0", "hw:USB,0")
+            selection = AudioSelection("plughw:CARD=USB,DEV=0", "hw:USB,0", 35)
             save_audio_selection(state, selection)
             self.assertEqual(
                 selection,
@@ -52,10 +52,28 @@ class AudioDeviceTests(unittest.TestCase):
             )
             state.write_text("not json", encoding="utf-8")
             self.assertEqual(
-                AudioSelection("default", "default"),
+                AudioSelection("default", "default", 25),
                 load_audio_selection(
                     state,
                     default_playback="default",
                     default_capture="default",
                 ),
             )
+
+    def test_old_audio_state_without_level_uses_safe_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "audio.json"
+            state.write_text(
+                '{"playback_device":"default","capture_device":"default"}',
+                encoding="utf-8",
+            )
+            selection = load_audio_selection(
+                state,
+                default_playback="default",
+                default_capture="default",
+            )
+            self.assertEqual(25, selection.output_level)
+
+
+if __name__ == "__main__":
+    unittest.main()

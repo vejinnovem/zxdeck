@@ -20,18 +20,26 @@ through an explicit development flag.
 
 1. Home: current tape, progress, transport controls and navigation. Long tape
    names pause, scroll to the end, pause again and scroll back. Only the small
-   title strip is refreshed during this animation.
+   title strip is refreshed during this animation. During PLAY the audio worker
+   supplies both total duration and current generated-sample position, so the
+   time readout and progress bar advance instead of remaining at `00:00`.
 2. Files: a simple list/browser suitable for touch, with Up/Down selection,
-   automatic scrolling and multi-tap search. The Search screen also opens an
-   A-Z grid which jumps to the first filename in a virtual letter group; `#`
-   groups names beginning with digits or punctuation. No physical A-Z
-   directories are created.
+   automatic scrolling and multi-tap search. Holding Up/Down starts one-item
+   autorepeat after one second; after 2.5 seconds the repeat changes to whole
+   filename groups (A, B, C ... and `#`) for fast navigation through a large
+   library. The Search screen also opens an A-Z grid which jumps directly to a
+   virtual letter group. No physical A-Z directories are created.
 3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad. Entering this
    screen always stops transport; only an explicit REC press may start mock
    recording.
-4. Settings: tape-directory selection, separate ALSA playback/capture device
-   pickers and a confirmed system Power Off action.
-5. Directory picker: directory-only Linux navigation constrained by the
+4. Settings: a scrollable list rather than a fixed set of squeezed buttons.
+   `BACK`, `UP` and `DOWN` remain in the footer while the list can grow with
+   future functions. Current entries include tape-directory selection, separate
+   ALSA playback/capture pickers, software output level and confirmed Power Off.
+   The device-facing renderer also shows the current IPv4 address.
+5. Output level: large `-`, `MUTE` and `+` controls for the generated tape
+   signal. Tap changes the value by 5%; holding `-` or `+` repeats the change.
+6. Directory picker: directory-only Linux navigation constrained by the
    configured browse root.
 
 ## Multi-tap keypad

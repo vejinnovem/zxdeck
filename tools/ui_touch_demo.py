@@ -19,7 +19,7 @@ from zxdeck.audio import (
     save_audio_selection,
 )
 from zxdeck.core.state import DeckState, TransportState
-from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
+from zxdeck.frontends.touch import DeviceTouchRenderer, Screen, TouchUIController
 from zxdeck.frontends.touch.frame import crop_rgb565, image_to_rgb565
 from zxdeck.frontends.touch.renderer import TAPE_TITLE_RECT, marquee_offset
 from zxdeck.frontends.touch.splash import render_splash
@@ -141,7 +141,7 @@ def main() -> int:
         raise SystemExit("a calibration file is required")
     calibration = TouchCalibration.load(calibration_path)
 
-    renderer = TouchRenderer(font_path=args.font if args.font.exists() else None)
+    renderer = DeviceTouchRenderer(font_path=args.font if args.font.exists() else None)
     display = ILI9341(config.display)
     touch = XPT2046(config.touch)
 
@@ -168,9 +168,14 @@ def main() -> int:
         capture_devices=list_audio_devices("capture"),
         selected_playback_device=audio_selection.playback_device,
         selected_capture_device=audio_selection.capture_device,
+        output_level=audio_selection.output_level,
+        previous_output_level=max(5, audio_selection.output_level),
     )
     rendered = None
-    player = AudioPlayer(audio_selection.playback_device)
+    player = AudioPlayer(
+        audio_selection.playback_device,
+        output_level=audio_selection.output_level,
+    )
     running = True
     cursor_visible = True
     cursor_changed_at = time.monotonic()
@@ -209,6 +214,154 @@ def main() -> int:
             time.sleep(0.01)
         time.sleep(0.03)
 
+    def save_audio_state() -> None:
+        save_audio_selection(
+            args.audio_state,
+            AudioSelection(
+                controller.selected_playback_device,
+                controller.selected_capture_device,
+                controller.output_level,
+            ),
+        )
+
+    def apply_action(action: str, *, persist_audio: bool = True) -> None:
+        nonlocal running, cursor_visible, cursor_changed_at, tape_entries
+        previous_storage_path = controller.selected_storage_path
+        previous_transport = controller.state.transport
+        previous_playback_device = controller.selected_playback_device
+        previous_capture_device = controller.selected_capture_device
+        previous_output_level = controller.output_level
+
+        if action == "playback-device":
+            controller.playback_devices = list_audio_devices("playback")
+        elif action == "capture-device":
+            controller.capture_devices = list_audio_devices("capture")
+        controller.handle_action(action)
+
+        if action == "play" and controller.state.transport is TransportState.PLAYING:
+            tape_path = controller.selected_tape_path
+            if tape_path is None:
+                controller.state = controller.state.next_revision(
+                    transport=TransportState.STOPPED,
+                    error="TAPE PATH UNAVAILABLE",
+                )
+            else:
+                player.play(tape_path)
+        elif (
+            action in {"stop", "rewind", "new", "record"}
+            or controller.state.transport is not previous_transport
+            and controller.state.transport is not TransportState.PLAYING
+        ):
+            player.stop()
+
+        audio_changed = (
+            controller.selected_playback_device != previous_playback_device
+            or controller.selected_capture_device != previous_capture_device
+            or controller.output_level != previous_output_level
+        )
+        if controller.selected_playback_device != previous_playback_device:
+            player.device = controller.selected_playback_device
+        if controller.output_level != previous_output_level:
+            player.set_output_level(controller.output_level)
+        if audio_changed and persist_audio:
+            save_audio_state()
+            print(
+                "Audio settings saved: "
+                f"playback={controller.selected_playback_device} "
+                f"capture={controller.selected_capture_device} "
+                f"level={controller.output_level}%",
+                flush=True,
+            )
+
+        if (
+            controller.selected_storage_path is not None
+            and controller.selected_storage_path != previous_storage_path
+        ):
+            save_selected_path(
+                args.storage_state,
+                controller.selected_storage_path,
+            )
+            selected_config = replace(
+                app_config.storage,
+                path=controller.selected_storage_path,
+            )
+            tape_entries = load_tape_entries(selected_config)
+            controller.files = tuple(entry.name for entry in tape_entries)
+            controller.file_paths = tuple(entry.path for entry in tape_entries)
+            controller.search_query = ""
+
+        cursor_visible = True
+        cursor_changed_at = time.monotonic()
+        redraw()
+
+        if controller.shutdown_requested:
+            if args.allow_poweroff:
+                print("Confirmed system poweroff.", flush=True)
+                time.sleep(0.5)
+                subprocess.run(
+                    ("sudo", "-n", "systemctl", "poweroff"),
+                    check=True,
+                )
+                running = False
+            else:
+                print(
+                    "Poweroff requested but --allow-poweroff is not enabled.",
+                    flush=True,
+                )
+                time.sleep(0.5)
+                controller.shutdown_requested = False
+                controller.screen = Screen.SETTINGS
+                redraw()
+
+    def handle_repeatable_touch(action: str) -> bool:
+        screen = controller.screen
+        if screen is Screen.FILES and action in {"up", "down"}:
+            apply_action(action)
+            started = time.monotonic()
+            next_repeat = started + 1.0
+            while running and touch.pressed:
+                now = time.monotonic()
+                if now >= next_repeat:
+                    elapsed = now - started
+                    repeat_action = action
+                    interval = 0.14
+                    if elapsed >= 2.5:
+                        repeat_action = "group-up" if action == "up" else "group-down"
+                        interval = 0.35
+                    apply_action(repeat_action)
+                    next_repeat = now + interval
+                time.sleep(0.01)
+            time.sleep(0.03)
+            return True
+
+        if screen is Screen.SETTINGS and action in {"settings-up", "settings-down"}:
+            apply_action(action)
+            started = time.monotonic()
+            next_repeat = started + 1.0
+            while running and touch.pressed:
+                now = time.monotonic()
+                if now >= next_repeat:
+                    apply_action(action)
+                    next_repeat = now + 0.18
+                time.sleep(0.01)
+            time.sleep(0.03)
+            return True
+
+        if screen is Screen.OUTPUT_LEVEL and action in {"volume-up", "volume-down"}:
+            apply_action(action, persist_audio=False)
+            started = time.monotonic()
+            next_repeat = started + 0.6
+            while running and touch.pressed:
+                now = time.monotonic()
+                if now >= next_repeat:
+                    apply_action(action, persist_audio=False)
+                    next_repeat = now + 0.18
+                time.sleep(0.01)
+            save_audio_state()
+            time.sleep(0.03)
+            return True
+        return False
+
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
@@ -227,16 +380,43 @@ def main() -> int:
             now = time.monotonic()
             playback_event = player.poll()
             if playback_event is not None:
-                if playback_event.kind in {"finished", "stopped", "error"}:
+                if playback_event.kind in {"started", "progress"}:
+                    controller.state = controller.state.next_revision(
+                        transport=TransportState.PLAYING,
+                        position_seconds=(
+                            playback_event.position_seconds
+                            if playback_event.position_seconds is not None
+                            else controller.state.position_seconds
+                        ),
+                        duration_seconds=(
+                            playback_event.duration_seconds
+                            if playback_event.duration_seconds is not None
+                            else controller.state.duration_seconds
+                        ),
+                        error=None,
+                    )
+                elif playback_event.kind in {"finished", "stopped", "error"}:
                     controller.state = controller.state.next_revision(
                         transport=TransportState.STOPPED,
+                        position_seconds=(
+                            playback_event.position_seconds
+                            if playback_event.position_seconds is not None
+                            else controller.state.position_seconds
+                        ),
+                        duration_seconds=(
+                            playback_event.duration_seconds
+                            if playback_event.duration_seconds is not None
+                            else controller.state.duration_seconds
+                        ),
                         error=(
                             playback_event.message[:28].upper()
                             if playback_event.kind == "error"
                             else None
                         ),
                     )
+                if controller.screen is Screen.HOME:
                     redraw()
+
             if controller.screen is Screen.HOME and now >= title_refresh_at:
                 current_title = controller.state.tape_name or "NO TAPE"
                 maximum_offset = max(
@@ -268,6 +448,7 @@ def main() -> int:
                         rendered.image.paste(title_image, TAPE_TITLE_RECT[:2])
                     title_offset = next_offset
                 title_refresh_at = now + 0.1
+
             if not touch.pressed:
                 if controller.screen in {Screen.FILENAME, Screen.SEARCH}:
                     if controller.editor.expire(now=now):
@@ -294,90 +475,11 @@ def main() -> int:
                 continue
 
             print(f"touch x={x:3d} y={y:3d} action={action}", flush=True)
-
             send_pressed_feedback(display, rendered, action)
+            if handle_repeatable_touch(action):
+                continue
             wait_for_release()
-            previous_storage_path = controller.selected_storage_path
-            previous_transport = controller.state.transport
-            previous_playback_device = controller.selected_playback_device
-            previous_capture_device = controller.selected_capture_device
-            if action == "playback-device":
-                controller.playback_devices = list_audio_devices("playback")
-            elif action == "capture-device":
-                controller.capture_devices = list_audio_devices("capture")
-            controller.handle_action(action)
-
-            if action == "play" and controller.state.transport is TransportState.PLAYING:
-                tape_path = controller.selected_tape_path
-                if tape_path is None:
-                    controller.state = controller.state.next_revision(
-                        transport=TransportState.STOPPED,
-                        error="TAPE PATH UNAVAILABLE",
-                    )
-                else:
-                    player.play(tape_path)
-            elif (
-                action in {"stop", "rewind", "new", "record"}
-                or controller.state.transport is not previous_transport
-                and controller.state.transport is not TransportState.PLAYING
-            ):
-                player.stop()
-            cursor_visible = True
-            cursor_changed_at = time.monotonic()
-            redraw()
-
-            if (
-                controller.selected_playback_device != previous_playback_device
-                or controller.selected_capture_device != previous_capture_device
-            ):
-                selection = AudioSelection(
-                    controller.selected_playback_device,
-                    controller.selected_capture_device,
-                )
-                save_audio_selection(args.audio_state, selection)
-                player.device = selection.playback_device
-                print(
-                    "Audio devices saved: "
-                    f"playback={selection.playback_device} "
-                    f"capture={selection.capture_device}",
-                    flush=True,
-                )
-
-            if (
-                controller.selected_storage_path is not None
-                and controller.selected_storage_path != previous_storage_path
-            ):
-                save_selected_path(
-                    args.storage_state,
-                    controller.selected_storage_path,
-                )
-                selected_config = replace(
-                    app_config.storage,
-                    path=controller.selected_storage_path,
-                )
-                tape_entries = load_tape_entries(selected_config)
-                controller.files = tuple(entry.name for entry in tape_entries)
-                controller.file_paths = tuple(entry.path for entry in tape_entries)
-                controller.search_query = ""
-
-            if controller.shutdown_requested:
-                if args.allow_poweroff:
-                    print("Confirmed system poweroff.", flush=True)
-                    time.sleep(0.5)
-                    subprocess.run(
-                        ("sudo", "-n", "systemctl", "poweroff"),
-                        check=True,
-                    )
-                    running = False
-                else:
-                    print(
-                        "Poweroff requested but --allow-poweroff is not enabled.",
-                        flush=True,
-                    )
-                    time.sleep(0.5)
-                    controller.shutdown_requested = False
-                    controller.screen = Screen.SETTINGS
-                    redraw()
+            apply_action(action)
 
     finally:
         player.close()

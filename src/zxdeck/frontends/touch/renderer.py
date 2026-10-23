@@ -41,6 +41,7 @@ class Screen(str, Enum):
     SEARCH = "search"
     LETTERS = "letters"
     SETTINGS = "settings"
+    OUTPUT_LEVEL = "output_level"
     DIRECTORIES = "directories"
     AUDIO_PLAYBACK = "audio_playback"
     AUDIO_CAPTURE = "audio_capture"
@@ -328,41 +329,76 @@ class TouchRenderer:
         *,
         playback_device: str = "default",
         capture_device: str = "default",
+        output_level: int = 25,
+        offset: int = 0,
+        ip_address: str = "NO NETWORK",
     ) -> RenderedScreen:
         image, draw = self._new_canvas()
         targets: list[HitTarget] = []
         self._header(draw, "SETTINGS", "DEVICE")
 
-        library_rect = (16, 36, 224, 82)
-        playback_rect = (16, 91, 224, 137)
-        capture_rect = (16, 146, 224, 192)
-        power_rect = (16, 211, 224, 257)
-        self._button(draw, library_rect, "TAPE DIRECTORY", accent=CYAN)
-        self._button(draw, playback_rect, "PLAYBACK", accent=GREEN)
-        self._button(draw, capture_rect, "CAPTURE", accent=GREEN)
-        self._button(draw, power_rect, "POWER OFF", accent=RED)
-        self._right_text(
-            draw,
-            self._short_device(playback_device),
-            216,
-            122,
-            size=7,
-            fill=DIM,
+        entries = (
+            ("directories", "TAPE DIRECTORY", "", CYAN),
+            ("playback-device", "PLAYBACK", self._short_device(playback_device), GREEN),
+            ("capture-device", "CAPTURE", self._short_device(capture_device), GREEN),
+            ("output-level", "OUTPUT LEVEL", f"{max(0, min(100, output_level))}%", YELLOW),
+            ("power", "POWER OFF", "", RED),
         )
-        self._right_text(
-            draw,
-            self._short_device(capture_device),
-            216,
-            177,
-            size=7,
-            fill=DIM,
-        )
+        maximum_offset = max(0, len(entries) - 4)
+        offset = min(maximum_offset, max(0, offset))
+        for row, (action, label, detail, accent) in enumerate(entries[offset : offset + 4]):
+            top = 34 + row * 55
+            rect = (8, top, 232, top + 49)
+            draw.rectangle(rect, fill=DARK, outline=accent)
+            if detail:
+                self._text(draw, label, (14, top + 8), size=9)
+                self._right_text(draw, detail, 224, top + 29, size=7, fill=DIM)
+            else:
+                self._center_text_in_rect(draw, label, rect, size=10)
+            targets.append(HitTarget(action, rect))
+
+        self._center_text(draw, f"IP {ip_address}", 257, size=7, fill=CYAN)
+
+        back_rect = (0, 276, 80, 320)
+        up_rect = (80, 276, 160, 320)
+        down_rect = (160, 276, 240, 320)
+        self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
+        self._button(draw, up_rect, "UP", accent=YELLOW, squared=True)
+        self._button(draw, down_rect, "DOWN", accent=YELLOW, squared=True)
         targets.extend(
             (
-                HitTarget("directories", library_rect),
-                HitTarget("playback-device", playback_rect),
-                HitTarget("capture-device", capture_rect),
-                HitTarget("power", power_rect),
+                HitTarget("back", back_rect),
+                HitTarget("settings-up", up_rect),
+                HitTarget("settings-down", down_rect),
+            )
+        )
+        return RenderedScreen(image, tuple(targets))
+
+    def render_output_level(self, level: int) -> RenderedScreen:
+        image, draw = self._new_canvas()
+        targets: list[HitTarget] = []
+        level = max(0, min(100, int(level)))
+        self._header(draw, "OUTPUT LEVEL", "MUTED" if level == 0 else f"{level}%")
+
+        self._center_text(draw, "DIGITAL TAPE SIGNAL", 58, size=8, fill=DIM)
+        self._center_text(draw, "MUTED" if level == 0 else f"{level}%", 92, size=28, fill=YELLOW)
+        bar_left, bar_top, bar_right, bar_bottom = 20, 142, 220, 156
+        draw.rectangle((bar_left, bar_top, bar_right, bar_bottom), outline=DIM)
+        fill_right = bar_left + int((bar_right - bar_left) * level / 100)
+        if fill_right > bar_left:
+            draw.rectangle((bar_left + 1, bar_top + 1, fill_right, bar_bottom - 1), fill=YELLOW)
+
+        down_rect = (0, 190, 80, 258)
+        mute_rect = (80, 190, 160, 258)
+        up_rect = (160, 190, 240, 258)
+        self._button(draw, down_rect, "-", accent=YELLOW, squared=True)
+        self._button(draw, mute_rect, "MUTE", active=level == 0, accent=RED, squared=True)
+        self._button(draw, up_rect, "+", accent=YELLOW, squared=True)
+        targets.extend(
+            (
+                HitTarget("volume-down", down_rect),
+                HitTarget("volume-mute", mute_rect),
+                HitTarget("volume-up", up_rect),
             )
         )
 

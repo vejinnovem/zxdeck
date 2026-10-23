@@ -16,6 +16,65 @@ from zxdeck.tape.pulses import (
 )
 
 
+LevelSource = int | Callable[[], int]
+
+
+def count_pcm_samples(
+    events: Iterable[TapeEvent],
+    *,
+    sample_rate: int = 44_100,
+) -> int:
+    """Return the exact PCM sample count without generating the PCM bytes."""
+    if sample_rate <= 0:
+        raise ValueError("sample rate must be positive")
+
+    total = 0
+    fraction = 0
+
+    def add_tstates(tstates: int) -> None:
+        nonlocal total, fraction
+        scaled = tstates * sample_rate + fraction
+        count, fraction = divmod(scaled, ZX_CLOCK_HZ)
+        total += count
+
+    for event in events:
+        if isinstance(event, Pulse):
+            add_tstates(event.tstates)
+        elif isinstance(event, PulseRun):
+            add_tstates(event.tstates * event.count)
+        elif isinstance(event, EncodedData):
+            if not 1 <= event.used_bits_last_byte <= 8:
+                raise ValueError("invalid encoded-data used-bit count")
+            if not event.data:
+                continue
+            full = event.data[:-1]
+            last = event.data[-1]
+            total_bits = len(full) * 8 + event.used_bits_last_byte
+            ones = sum(value.bit_count() for value in full)
+            mask = 0xFF & (0xFF << (8 - event.used_bits_last_byte))
+            ones += (last & mask).bit_count()
+            zeros = total_bits - ones
+            add_tstates(
+                2
+                * (
+                    zeros * event.zero_tstates
+                    + ones * event.one_tstates
+                )
+            )
+        elif isinstance(event, Pause):
+            fraction = 0
+            total += round(event.milliseconds * sample_rate / 1000)
+        elif isinstance(event, DirectRecording):
+            if not 1 <= event.used_bits_last_byte <= 8:
+                raise ValueError("invalid direct-recording used-bit count")
+            if not event.data:
+                continue
+            total_bits = (len(event.data) - 1) * 8 + event.used_bits_last_byte
+            add_tstates(total_bits * event.tstates_per_sample)
+
+    return total
+
+
 def write_pcm(
     events: Iterable[TapeEvent],
     output: BinaryIO,
@@ -23,14 +82,29 @@ def write_pcm(
     sample_rate: int = 44_100,
     cancelled: Callable[[], bool] = lambda: False,
     chunk_size: int = 32_768,
+    level_percent: LevelSource = 100,
+    progress: Callable[[int], None] | None = None,
 ) -> int:
     """Write PCM incrementally and return its total sample count."""
     if sample_rate <= 0:
         raise ValueError("sample rate must be positive")
+    if chunk_size <= 0:
+        raise ValueError("chunk size must be positive")
+
     buffer = bytearray()
     level = False
     fraction = 0
     total = 0
+    low_value = 32
+    high_value = 224
+
+    def refresh_signal_levels() -> None:
+        nonlocal low_value, high_value
+        raw = level_percent() if callable(level_percent) else level_percent
+        percent = max(0, min(100, int(raw)))
+        amplitude = round(96 * percent / 100)
+        low_value = 128 - amplitude
+        high_value = 128 + amplitude
 
     def samples_for_tstates(tstates: int) -> int:
         nonlocal fraction
@@ -38,7 +112,16 @@ def write_pcm(
         count, fraction = divmod(scaled, ZX_CLOCK_HZ)
         return count
 
-    def append(value: int, count: int) -> None:
+    def flush() -> None:
+        if not buffer:
+            return
+        output.write(buffer)
+        buffer.clear()
+        if progress is not None:
+            progress(total)
+        refresh_signal_levels()
+
+    def append_constant(value: int, count: int) -> None:
         nonlocal total
         while count:
             room = chunk_size - len(buffer)
@@ -47,8 +130,21 @@ def write_pcm(
             count -= take
             total += take
             if len(buffer) >= chunk_size:
-                output.write(buffer)
-                buffer.clear()
+                flush()
+
+    def append_signal(is_high: bool, count: int) -> None:
+        nonlocal total
+        while count:
+            room = chunk_size - len(buffer)
+            take = min(count, room)
+            value = high_value if is_high else low_value
+            buffer.extend(bytes((value,)) * take)
+            count -= take
+            total += take
+            if len(buffer) >= chunk_size:
+                flush()
+
+    refresh_signal_levels()
 
     for event in events:
         if cancelled():
@@ -58,7 +154,7 @@ def write_pcm(
             for pulse_index in range(count):
                 if pulse_index % 256 == 0 and cancelled():
                     return total
-                append(224 if level else 32, samples_for_tstates(event.tstates))
+                append_signal(level, samples_for_tstates(event.tstates))
                 level = not level
         elif isinstance(event, EncodedData):
             if not 1 <= event.used_bits_last_byte <= 8:
@@ -78,11 +174,11 @@ def write_pcm(
                         else event.zero_tstates
                     )
                     for _ in range(2):
-                        append(224 if level else 32, samples_for_tstates(duration))
+                        append_signal(level, samples_for_tstates(duration))
                         level = not level
         elif isinstance(event, Pause):
             fraction = 0
-            append(128, round(event.milliseconds * sample_rate / 1000))
+            append_constant(128, round(event.milliseconds * sample_rate / 1000))
             level = False
         elif isinstance(event, DirectRecording):
             if not 1 <= event.used_bits_last_byte <= 8:
@@ -97,10 +193,10 @@ def write_pcm(
                 )
                 for shift in range(7, 7 - bit_count, -1):
                     level = bool(value & (1 << shift))
-                    append(
-                        224 if level else 32,
+                    append_signal(
+                        level,
                         samples_for_tstates(event.tstates_per_sample),
                     )
     if buffer:
-        output.write(buffer)
+        flush()
     return total

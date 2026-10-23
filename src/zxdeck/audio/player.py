@@ -9,35 +9,50 @@ import queue
 import subprocess
 from typing import Literal
 
-from zxdeck.audio.pcm import write_pcm
+from zxdeck.audio.pcm import count_pcm_samples, write_pcm
 from zxdeck.tape.pulses import iter_tape_events
 
 
 @dataclass(frozen=True, slots=True)
 class PlaybackEvent:
-    kind: Literal["started", "finished", "stopped", "error"]
+    kind: Literal["started", "progress", "finished", "stopped", "error"]
     message: str = ""
+    position_seconds: float | None = None
+    duration_seconds: float | None = None
 
 
 class AudioPlayer:
     """Small controller for one disposable playback worker process."""
 
-    def __init__(self, device: str = "default", sample_rate: int = 44_100) -> None:
+    def __init__(
+        self,
+        device: str = "default",
+        sample_rate: int = 44_100,
+        output_level: int = 25,
+    ) -> None:
         self.device = device
         self.sample_rate = sample_rate
+        self.output_level = max(0, min(100, int(output_level)))
         self._process = None
         self._cancel = None
         self._events = None
+        self._level = None
 
     @property
     def active(self) -> bool:
         return self._process is not None and self._process.is_alive()
+
+    def set_output_level(self, level: int) -> None:
+        self.output_level = max(0, min(100, int(level)))
+        if self._level is not None:
+            self._level.value = self.output_level
 
     def play(self, path: str | Path) -> None:
         self.stop()
         context = multiprocessing.get_context("spawn")
         self._cancel = context.Event()
         self._events = context.Queue()
+        self._level = context.Value("i", self.output_level, lock=False)
         self._process = context.Process(
             target=_play_worker,
             args=(
@@ -46,6 +61,7 @@ class AudioPlayer:
                 self.sample_rate,
                 self._cancel,
                 self._events,
+                self._level,
             ),
             name="zxdeck-audio",
             daemon=True,
@@ -94,9 +110,10 @@ class AudioPlayer:
         self._process = None
         self._cancel = None
         self._events = None
+        self._level = None
 
 
-def _play_worker(path, device, sample_rate, cancelled, events) -> None:
+def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> None:
     command = (
         "aplay",
         "-q",
@@ -112,25 +129,60 @@ def _play_worker(path, device, sample_rate, cancelled, events) -> None:
         str(sample_rate),
     )
     player = None
+    duration_seconds = None
     try:
+        total_samples = count_pcm_samples(
+            iter_tape_events(path),
+            sample_rate=sample_rate,
+        )
+        duration_seconds = total_samples / sample_rate
         player = subprocess.Popen(command, stdin=subprocess.PIPE)
         if player.stdin is None:
             raise RuntimeError("cannot open ALSA input pipe")
-        events.put(PlaybackEvent("started"))
+        events.put(
+            PlaybackEvent(
+                "started",
+                position_seconds=0.0,
+                duration_seconds=duration_seconds,
+            )
+        )
+
+        def report_progress(samples: int) -> None:
+            events.put(
+                PlaybackEvent(
+                    "progress",
+                    position_seconds=min(duration_seconds, samples / sample_rate),
+                    duration_seconds=duration_seconds,
+                )
+            )
+
         write_pcm(
             iter_tape_events(path),
             player.stdin,
             sample_rate=sample_rate,
             cancelled=cancelled.is_set,
+            level_percent=lambda: output_level.value,
+            progress=report_progress,
         )
         player.stdin.close()
         return_code = player.wait()
         if cancelled.is_set():
-            events.put(PlaybackEvent("stopped"))
+            events.put(
+                PlaybackEvent(
+                    "stopped",
+                    duration_seconds=duration_seconds,
+                )
+            )
         elif return_code:
             events.put(PlaybackEvent("error", f"ALSA EXIT {return_code}"))
         else:
-            events.put(PlaybackEvent("finished"))
+            events.put(
+                PlaybackEvent(
+                    "finished",
+                    position_seconds=duration_seconds,
+                    duration_seconds=duration_seconds,
+                )
+            )
     except BrokenPipeError:
         events.put(PlaybackEvent("error", "AUDIO DEVICE UNAVAILABLE"))
     except Exception as exc:
