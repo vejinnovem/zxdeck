@@ -27,7 +27,7 @@ The service user needs access to the `spi` and `gpio` groups.
 
 ```bash
 sudo apt update
-sudo apt install git python3-venv python3-spidev python3-gpiozero python3-lgpio python3-pil
+sudo apt install git python3-venv python3-spidev python3-lgpio python3-pil
 ```
 
 GPIO/SPI and Pillow are intentionally installed by Raspberry Pi OS rather than
@@ -46,6 +46,10 @@ python3 -m venv --system-site-packages .venv
 modules to the environment. Nothing is downloaded from PyPI. Commands below
 point Python at the repository's `src/` directory explicitly. The core can be
 used without GPIO/SPI packages when the display is disabled.
+
+The GPIO adapter polls `lgpio` directly. This avoids the background notification
+threads created by a higher-level GPIO wrapper and leaves more of the Pi Zero's
+single CPU core available for future audio work.
 
 ## 4. Run diagnostics
 

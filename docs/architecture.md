@@ -23,7 +23,7 @@ local IPC adapter without moving domain logic into the web layer.
 
 ## Optional display
 
-The core package does not import `spidev`, `gpiozero` or the hardware drivers.
+The core package does not import `spidev`, `lgpio` or the hardware drivers.
 Raspberry Pi modules load those dependencies lazily only when an enabled TFT or
 touchscreen is instantiated. A configuration with both devices disabled is
 valid and must remain the default example.

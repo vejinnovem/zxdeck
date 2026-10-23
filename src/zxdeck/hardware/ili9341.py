@@ -23,9 +23,9 @@ class ILI9341:
 
             spi_factory = spidev.SpiDev
         if output_factory is None:
-            from gpiozero import DigitalOutputDevice
+            from .gpio import LgpioOutputDevice
 
-            output_factory = DigitalOutputDevice
+            output_factory = LgpioOutputDevice
 
         self.config = config
         self.dc = output_factory(config.dc_bcm, initial_value=False)

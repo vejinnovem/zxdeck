@@ -23,9 +23,9 @@ class XPT2046:
 
             spi_factory = spidev.SpiDev
         if input_factory is None:
-            from gpiozero import DigitalInputDevice
+            from .gpio import LgpioInputDevice
 
-            input_factory = DigitalInputDevice
+            input_factory = LgpioInputDevice
 
         self.config = config
         self.irq = input_factory(config.irq_bcm, pull_up=True)

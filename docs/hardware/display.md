@@ -115,7 +115,8 @@ A future implementation may share `MOSI`, `MISO`, and `SCLK` with the existing S
 
 The dependency-light test in `tools/display_test.py` initializes the LCD
 and displays eight RGB565 colour bars. It uses only `python3-spidev` and
-`python3-gpiozero`, both available as Raspberry Pi OS packages.
+`python3-lgpio`, both available as Raspberry Pi OS packages. The application
+uses `lgpio` directly to avoid unnecessary background threads on the Pi Zero.
 
 Keep the process running so GPIO25 continues to hold the module's RESET line
 high:
