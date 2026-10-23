@@ -382,11 +382,13 @@ The repository only needs to be cloned once. Later updates use Git:
 cd ~/zxdeck
 git pull --ff-only
 sudo .venv/bin/python tools/install_service.py
+sudo systemctl restart zxdeck.service
 ```
 
 Re-running the service installer is intentional: most updates only need the new
-code, but this also keeps systemd units synchronized if their definition changes.
-The application service is restarted by the installer.
+code, but this also keeps systemd units synchronized if their definition
+changes. The explicit restart then makes the running application load the new
+code immediately.
 
 A future touchscreen updater is planned so normal users will not need SSH for
 this step.
