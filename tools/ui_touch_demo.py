@@ -13,7 +13,7 @@ import signal
 import time
 
 from zxdeck.core.state import DeckState, TransportState
-from zxdeck.frontends.touch import MultiTapEditor, Screen, TouchRenderer
+from zxdeck.frontends.touch import TouchRenderer, TouchUIController
 from zxdeck.frontends.touch.frame import image_to_rgb565
 from zxdeck.frontends.touch.splash import render_splash
 from zxdeck.hardware.calibration import TouchCalibration
@@ -72,15 +72,15 @@ def main() -> int:
     display = ILI9341(config.display)
     touch = XPT2046(config.touch)
 
-    state = DeckState(
-        transport=TransportState.STOPPED,
-        tape_name="MANIC MINER.TZX",
-        position_seconds=102,
-        duration_seconds=196,
+    controller = TouchUIController(
+        MOCK_FILES,
+        state=DeckState(
+            transport=TransportState.STOPPED,
+            tape_name="MANIC MINER.TZX",
+            position_seconds=102,
+            duration_seconds=196,
+        ),
     )
-    screen = Screen.HOME
-    selected_file = 0
-    editor = MultiTapEditor()
     rendered = None
     running = True
 
@@ -90,14 +90,7 @@ def main() -> int:
 
     def redraw() -> None:
         nonlocal rendered
-        if screen is Screen.HOME:
-            rendered = renderer.render_home(state)
-        elif screen is Screen.FILES:
-            rendered = renderer.render_files(MOCK_FILES, selected=selected_file)
-        elif screen is Screen.FILENAME:
-            rendered = renderer.render_filename(editor)
-        else:
-            rendered = renderer.render_settings()
+        rendered = controller.render(renderer)
         send_frame(display, rendered)
 
     def wait_for_release() -> None:
@@ -120,7 +113,7 @@ def main() -> int:
         print("ZX Deck interactive UI prototype ready. Press Ctrl+C to stop.", flush=True)
 
         while running:
-            if screen is Screen.FILENAME and editor.expire():
+            if controller.editor.expire():
                 redraw()
 
             if not touch.pressed:
@@ -138,52 +131,7 @@ def main() -> int:
 
             print(f"touch x={x:3d} y={y:3d} action={action}", flush=True)
 
-            if screen is Screen.HOME:
-                if action == "files":
-                    screen = Screen.FILES
-                elif action == "new":
-                    editor = MultiTapEditor()
-                    screen = Screen.FILENAME
-                elif action == "settings":
-                    screen = Screen.SETTINGS
-                elif action == "play":
-                    state = state.next_revision(transport=TransportState.PLAYING)
-                elif action == "stop":
-                    state = state.next_revision(transport=TransportState.STOPPED)
-                elif action == "record":
-                    state = state.next_revision(transport=TransportState.RECORDING)
-                elif action == "rewind":
-                    state = state.next_revision(position_seconds=0.0)
-
-            elif screen is Screen.FILES:
-                if action == "back":
-                    screen = Screen.HOME
-                elif action == "up":
-                    selected_file = max(0, selected_file - 1)
-                elif action == "open-selected":
-                    state = state.next_revision(tape_name=MOCK_FILES[selected_file])
-                    screen = Screen.HOME
-                elif action.startswith("open:"):
-                    selected_file = int(action.split(":", 1)[1])
-                    state = state.next_revision(tape_name=MOCK_FILES[selected_file])
-                    screen = Screen.HOME
-
-            elif screen is Screen.FILENAME:
-                if action == "cancel":
-                    screen = Screen.HOME
-                elif action == "save":
-                    name = editor.text.strip() or "UNTITLED"
-                    if "." not in Path(name).name:
-                        name += ".TZX"
-                    state = state.next_revision(tape_name=name)
-                    screen = Screen.HOME
-                elif action.startswith("key:"):
-                    editor.press(action.split(":", 1)[1])
-
-            elif screen is Screen.SETTINGS:
-                if action == "back":
-                    screen = Screen.HOME
-
+            controller.handle_action(action)
             redraw()
             wait_for_release()
 

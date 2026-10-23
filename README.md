@@ -3,6 +3,10 @@
 Portable digital tape recorder/player for ZX Spectrum computers, built around
 a Raspberry Pi. Playback and recording are both planned.
 
+> **Transparency:** ZX Deck is a vibe-coded project. I am not a programmer;
+> the project is being built with AI assistance, with changes checked by
+> automated tests and real-hardware testing.
+
 The application is designed around one authoritative backend/state model with
 two optional frontends:
 

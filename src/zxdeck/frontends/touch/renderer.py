@@ -156,16 +156,19 @@ class TouchRenderer:
             self._text(draw, filename[:25], (16, rect[1] + 10), size=10)
             targets.append(HitTarget(f"open:{absolute_index}", rect))
 
-        back_rect = (0, 276, 80, 320)
-        up_rect = (80, 276, 160, 320)
-        select_rect = (160, 276, 240, 320)
+        back_rect = (0, 276, 60, 320)
+        up_rect = (60, 276, 120, 320)
+        down_rect = (120, 276, 180, 320)
+        select_rect = (180, 276, 240, 320)
         self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
         self._button(draw, up_rect, "UP", accent=YELLOW, squared=True)
+        self._button(draw, down_rect, "DOWN", accent=YELLOW, squared=True)
         self._button(draw, select_rect, "OPEN", accent=GREEN, squared=True)
         targets.extend(
             (
                 HitTarget("back", back_rect),
                 HitTarget("up", up_rect),
+                HitTarget("down", down_rect),
                 HitTarget("open-selected", select_rect),
             )
         )

@@ -19,7 +19,8 @@ before those services exist.
 ## Initial screens
 
 1. Home: current tape, progress, transport controls and navigation.
-2. Files: a simple list/browser suitable for touch.
+2. Files: a simple list/browser suitable for touch, with Up/Down selection and
+   automatic scrolling when more than six entries are present.
 3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad.
 4. Settings: initially a placeholder; web-only settings may later include the
    preferred text-input method.
