@@ -21,6 +21,22 @@ The command/state boundary is deliberately transport-neutral. It can initially
 be used in one process on the Pi and later exposed through an HTTP/WebSocket or
 local IPC adapter without moving domain logic into the web layer.
 
+## Real-time audio boundary
+
+The future audio engine must not run in the touchscreen event loop. It should
+own the ALSA device and bounded, preallocated buffers in a separate process or
+an otherwise isolated real-time worker. Communication with the backend should
+use commands and small state snapshots.
+
+An audio callback must never render with Pillow, write to the TFT over SPI,
+scan storage or parse tape files. Those operations belong outside the callback
+and feed or drain the audio worker through a queue or ring buffer. Playback and
+recording tests must explicitly detect underruns, overruns and dropped samples.
+
+The touch UI remains event-driven. Static screens are not refreshed on a timer;
+the filename cursor is the only periodic animation and is only active while
+editing a name, when tape audio is not running.
+
 ## Optional display
 
 The core package does not import `spidev`, `lgpio` or the hardware drivers.
