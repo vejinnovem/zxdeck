@@ -7,6 +7,14 @@ a Raspberry Pi. Playback and recording are both planned.
 > the project is being built with AI assistance, with changes checked by
 > automated tests and real-hardware testing.
 
+## Recommended platform
+
+The currently recommended and verified base system is **32-bit Raspberry Pi OS
+13 (Trixie)** on a **Raspberry Pi Zero W**. This is the platform used for the
+real-hardware development and testing described in this repository. Other
+Raspberry Pi models or OS releases may work, but they are not the primary test
+target at this stage.
+
 The application is designed around one authoritative backend/state model with
 two optional frontends:
 
