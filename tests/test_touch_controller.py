@@ -114,6 +114,33 @@ class TouchUIControllerTests(unittest.TestCase):
 
         self.assertEqual(paths[6], controller.selected_tape_path)
 
+    def test_letter_grid_jumps_to_first_file_in_virtual_group(self) -> None:
+        files = ("1942.TAP", "ALPHA.TAP", "BETA.TZX", "BRAVO.TAP", "ZED.TAP")
+        controller = TouchUIController(files)
+        controller.handle_action("files")
+        controller.handle_action("search")
+        controller.editor.text = "old search"
+        controller.handle_action("letters")
+
+        self.assertEqual(Screen.LETTERS, controller.screen)
+        controller.handle_action("jump:B")
+
+        self.assertEqual(Screen.FILES, controller.screen)
+        self.assertEqual("", controller.search_query)
+        self.assertEqual(2, controller.selected_file)
+        self.assertEqual(2, controller.file_offset)
+
+    def test_hash_group_and_letter_grid_back_action(self) -> None:
+        controller = TouchUIController(("1942.TAP", "ALPHA.TAP"))
+        controller.screen = Screen.LETTERS
+        controller.handle_action("back")
+        self.assertEqual(Screen.SEARCH, controller.screen)
+
+        controller.screen = Screen.LETTERS
+        controller.handle_action("jump:#")
+        self.assertEqual(Screen.FILES, controller.screen)
+        self.assertEqual(0, controller.selected_file)
+
     def test_directory_picker_is_constrained_and_selects_current_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

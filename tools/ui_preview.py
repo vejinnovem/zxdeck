@@ -68,6 +68,9 @@ def main() -> int:
     search = renderer.render_search(MultiTapEditor(text="DIZZY"))
     search.image.save(args.output / "search.png")
 
+    letters = renderer.render_letters()
+    letters.image.save(args.output / "letters.png")
+
     directories = renderer.render_directories(
         Path("/mnt/zxdeck/tapes"),
         ("A-G", "H-N", "O-T", "U-Z", "Homebrew", "Recordings"),

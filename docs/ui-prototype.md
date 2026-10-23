@@ -22,7 +22,10 @@ through an explicit development flag.
    names pause, scroll to the end, pause again and scroll back. Only the small
    title strip is refreshed during this animation.
 2. Files: a simple list/browser suitable for touch, with Up/Down selection,
-   automatic scrolling and multi-tap search.
+   automatic scrolling and multi-tap search. The Search screen also opens an
+   A-Z grid which jumps to the first filename in a virtual letter group; `#`
+   groups names beginning with digits or punctuation. No physical A-Z
+   directories are created.
 3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad. Entering this
    screen always stops transport; only an explicit REC press may start mock
    recording.

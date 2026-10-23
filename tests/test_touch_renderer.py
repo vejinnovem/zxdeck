@@ -13,6 +13,18 @@ from zxdeck.frontends.touch.renderer import marquee_offset
 
 @unittest.skipIf(ImageChops is None, "Pillow is not installed")
 class TouchRendererTests(unittest.TestCase):
+    def test_search_links_to_letter_grid_with_large_separate_targets(self) -> None:
+        renderer = TouchRenderer()
+        search = renderer.render_search(MultiTapEditor())
+        letters = renderer.render_letters()
+
+        self.assertEqual("letters", search.action_at(120, 290))
+        self.assertEqual("cancel", search.action_at(40, 290))
+        self.assertEqual("apply-search", search.action_at(200, 290))
+        self.assertEqual("jump:A", letters.action_at(20, 55))
+        self.assertEqual("jump:#", letters.action_at(100, 230))
+        self.assertEqual("back", letters.action_at(120, 295))
+
     def test_long_tape_title_can_scroll_while_short_title_stays_centered(self) -> None:
         renderer = TouchRenderer()
         short_at_start = renderer.render_tape_title("DEMO.TAP", offset=0)

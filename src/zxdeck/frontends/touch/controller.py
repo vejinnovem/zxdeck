@@ -64,6 +64,8 @@ class TouchUIController:
                 self.editor,
                 cursor_visible=cursor_visible,
             )
+        if self.screen is Screen.LETTERS:
+            return renderer.render_letters()
         if self.screen is Screen.SETTINGS:
             return renderer.render_settings()
         if self.screen is Screen.DIRECTORIES and self.directory_browser is not None:
@@ -108,6 +110,8 @@ class TouchUIController:
             self._handle_filename(action)
         elif self.screen is Screen.SEARCH:
             self._handle_search(action)
+        elif self.screen is Screen.LETTERS:
+            self._handle_letters(action)
         elif self.screen is Screen.SETTINGS:
             self._handle_settings(action)
         elif self.screen is Screen.DIRECTORIES:
@@ -196,8 +200,29 @@ class TouchUIController:
             self.selected_file = 0
             self.file_offset = 0
             self.screen = Screen.FILES
+        elif action == "letters":
+            self.screen = Screen.LETTERS
         elif action.startswith("key:"):
             self.editor.press(action.split(":", 1)[1])
+
+    def _handle_letters(self, action: str) -> None:
+        if action == "back":
+            self.screen = Screen.SEARCH
+            return
+        if not action.startswith("jump:"):
+            return
+        initial = action.split(":", 1)[1].upper()
+        if initial not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ#":
+            return
+        self.search_query = ""
+        for index, name in enumerate(self.files):
+            first = name[:1].upper()
+            group = first if "A" <= first <= "Z" else "#"
+            if group == initial:
+                self.selected_file = index
+                self.file_offset = index
+                self.screen = Screen.FILES
+                return
 
     def _handle_settings(self, action: str) -> None:
         if action == "back":

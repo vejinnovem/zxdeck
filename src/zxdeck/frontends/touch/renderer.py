@@ -39,6 +39,7 @@ class Screen(str, Enum):
     FILES = "files"
     FILENAME = "filename"
     SEARCH = "search"
+    LETTERS = "letters"
     SETTINGS = "settings"
     DIRECTORIES = "directories"
     POWER = "power"
@@ -230,6 +231,8 @@ class TouchRenderer:
         title: str = "SAVE AS",
         accept_label: str = "SAVE",
         accept_action: str = "save",
+        middle_label: str | None = None,
+        middle_action: str | None = None,
     ) -> RenderedScreen:
         image, draw = self._new_canvas()
         targets: list[HitTarget] = []
@@ -267,13 +270,17 @@ class TouchRenderer:
             self._center_text_in_rect(draw, labels[key], rect, size=7, y_offset=10, fill=DIM)
             targets.append(HitTarget(f"key:{key}", rect))
 
-        cancel_rect = (0, 270, 120, 320)
-        save_rect = (120, 270, 240, 320)
+        button_width = 80 if middle_label and middle_action else 120
+        cancel_rect = (0, 270, button_width, 320)
+        save_rect = (240 - button_width, 270, 240, 320)
         self._button(draw, cancel_rect, "CANCEL", accent=RED, squared=True)
         self._button(draw, save_rect, accept_label, accent=GREEN, squared=True)
-        targets.extend(
-            (HitTarget("cancel", cancel_rect), HitTarget(accept_action, save_rect))
-        )
+        targets.append(HitTarget("cancel", cancel_rect))
+        if middle_label and middle_action:
+            middle_rect = (80, 270, 160, 320)
+            self._button(draw, middle_rect, middle_label, accent=YELLOW, squared=True)
+            targets.append(HitTarget(middle_action, middle_rect))
+        targets.append(HitTarget(accept_action, save_rect))
         return RenderedScreen(image, tuple(targets))
 
     def render_search(
@@ -288,7 +295,31 @@ class TouchRenderer:
             title="SEARCH",
             accept_label="FIND",
             accept_action="apply-search",
+            middle_label="A-Z",
+            middle_action="letters",
         )
+
+    def render_letters(self) -> RenderedScreen:
+        image, draw = self._new_canvas()
+        targets: list[HitTarget] = []
+        self._header(draw, "JUMP TO LETTER", "A-Z")
+
+        for index, letter in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ#"):
+            column = index % 6
+            row = index // 6
+            rect = (
+                column * 40 + 2,
+                36 + row * 44,
+                column * 40 + 38,
+                76 + row * 44,
+            )
+            self._button(draw, rect, letter, accent=CYAN)
+            targets.append(HitTarget(f"jump:{letter}", rect))
+
+        back_rect = (0, 276, 240, 320)
+        self._button(draw, back_rect, "BACK", accent=YELLOW, squared=True)
+        targets.append(HitTarget("back", back_rect))
+        return RenderedScreen(image, tuple(targets))
 
     def render_settings(self) -> RenderedScreen:
         image, draw = self._new_canvas()
