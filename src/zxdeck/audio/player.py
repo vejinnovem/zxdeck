@@ -55,6 +55,7 @@ class AudioPlayer:
     def stop(self) -> None:
         process = self._process
         if process is None:
+            self._close_ipc()
             return
         if process.is_alive() and self._cancel is not None:
             self._cancel.set()
@@ -62,7 +63,7 @@ class AudioPlayer:
         if process.is_alive():
             process.terminate()
             process.join(timeout=1.0)
-        self._process = None
+        self._close_ipc()
 
     def poll(self) -> PlaybackEvent | None:
         if self._events is None:
@@ -72,10 +73,27 @@ class AudioPlayer:
             try:
                 latest = self._events.get_nowait()
             except queue.Empty:
+                if (
+                    latest is not None
+                    and latest.kind in {"finished", "stopped", "error"}
+                    and self._process is not None
+                ):
+                    self._process.join(timeout=0.2)
+                    if not self._process.is_alive():
+                        self._close_ipc()
                 return latest
 
     def close(self) -> None:
         self.stop()
+
+    def _close_ipc(self) -> None:
+        events = self._events
+        if events is not None:
+            events.close()
+            events.join_thread()
+        self._process = None
+        self._cancel = None
+        self._events = None
 
 
 def _play_worker(path, device, sample_rate, cancelled, events) -> None:
