@@ -1,8 +1,8 @@
 # ZX Deck UI prototype
 
-The first UI milestone is intentionally independent of tape parsing, audio and
-storage. It uses mock data so the 240x320 touchscreen ergonomics can be tested
-before those services exist.
+The UI began as a hardware-independent prototype. It now indexes the configured
+storage and starts isolated TAP/TZX playback; mock filenames are available only
+through an explicit development flag.
 
 ## Design rules
 
@@ -18,7 +18,9 @@ before those services exist.
 
 ## Initial screens
 
-1. Home: current tape, progress, transport controls and navigation.
+1. Home: current tape, progress, transport controls and navigation. Long tape
+   names pause, scroll to the end, pause again and scroll back. Only the small
+   title strip is refreshed during this animation.
 2. Files: a simple list/browser suitable for touch, with Up/Down selection,
    automatic scrolling and multi-tap search.
 3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad. Entering this

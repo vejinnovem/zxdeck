@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 WIDTH = 240
 HEIGHT = 320
+TAPE_TITLE_RECT = (10, 38, 230, 73)
 
 BLACK = (0, 0, 0)
 WHITE = (245, 245, 245)
@@ -79,7 +80,7 @@ class TouchRenderer:
         self._header(draw, "ZX DECK", state.transport.value.upper())
 
         tape_name = state.tape_name or "NO TAPE"
-        self._center_text(draw, tape_name[:24], 47, size=16)
+        image.paste(self.render_tape_title(tape_name), TAPE_TITLE_RECT[:2])
 
         progress_left, progress_top, progress_right, progress_bottom = 16, 82, 224, 92
         draw.rectangle((progress_left, progress_top, progress_right, progress_bottom), outline=DIM)
@@ -135,6 +136,28 @@ class TouchRenderer:
             targets.append(HitTarget(action, rect))
 
         return RenderedScreen(image, tuple(targets))
+
+    def tape_title_width(self, tape_name: str) -> int:
+        from PIL import Image, ImageDraw
+
+        draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        box = draw.textbbox((0, 0), tape_name, font=self._font(16))
+        return box[2] - box[0]
+
+    def render_tape_title(self, tape_name: str, *, offset: int = 0):
+        """Render the clipped Home title strip for inexpensive marquee updates."""
+        from PIL import Image, ImageDraw
+
+        left, top, right, bottom = TAPE_TITLE_RECT
+        width, height = right - left, bottom - top
+        image = Image.new("RGB", (width, height), BLACK)
+        draw = ImageDraw.Draw(image)
+        font = self._font(16)
+        box = draw.textbbox((0, 0), tape_name, font=font)
+        text_width = box[2] - box[0]
+        x = (width - text_width) // 2 if text_width <= width else -max(0, offset)
+        draw.text((x, 9), tape_name, font=font, fill=WHITE, spacing=0)
+        return image
 
     def render_files(
         self,
@@ -432,3 +455,29 @@ class TouchRenderer:
             return f"{minutes:02d}:{secs:02d}"
         hours, minutes = divmod(minutes, 60)
         return f"{hours}:{minutes:02d}:{secs:02d}"
+
+
+def marquee_offset(
+    elapsed_seconds: float,
+    maximum_offset: int,
+    *,
+    pixels_per_second: float = 30.0,
+    start_hold_seconds: float = 1.5,
+    end_hold_seconds: float = 1.0,
+) -> int:
+    """Return a smooth ping-pong title offset with readable pauses at both ends."""
+    if maximum_offset <= 0 or pixels_per_second <= 0:
+        return 0
+    travel_seconds = maximum_offset / pixels_per_second
+    cycle = start_hold_seconds + travel_seconds + end_hold_seconds + travel_seconds
+    phase = max(0.0, elapsed_seconds) % cycle
+    if phase < start_hold_seconds:
+        return 0
+    phase -= start_hold_seconds
+    if phase < travel_seconds:
+        return min(maximum_offset, int(phase * pixels_per_second))
+    phase -= travel_seconds
+    if phase < end_hold_seconds:
+        return maximum_offset
+    phase -= end_hold_seconds
+    return max(0, maximum_offset - int(phase * pixels_per_second))

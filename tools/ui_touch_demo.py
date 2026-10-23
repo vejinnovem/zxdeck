@@ -19,6 +19,7 @@ from zxdeck.audio import AudioPlayer
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
 from zxdeck.frontends.touch.frame import image_to_rgb565
+from zxdeck.frontends.touch.renderer import TAPE_TITLE_RECT, marquee_offset
 from zxdeck.frontends.touch.splash import render_splash
 from zxdeck.hardware.calibration import TouchCalibration
 from zxdeck.hardware.config import HardwareConfig
@@ -94,6 +95,12 @@ def send_frame(display: ILI9341, rendered) -> None:
     send_image(display, rendered.image)
 
 
+def send_tape_title(display: ILI9341, title_image) -> None:
+    left, top, right, bottom = TAPE_TITLE_RECT
+    display.set_window(left, top, right - 1, bottom - 1)
+    display.write_rgb565(image_to_rgb565(title_image))
+
+
 def send_pressed_feedback(display: ILI9341, rendered, action: str) -> None:
     """Invert only the touched target so feedback reaches the LCD immediately."""
     from PIL import ImageOps
@@ -154,15 +161,29 @@ def main() -> int:
     running = True
     cursor_visible = True
     cursor_changed_at = time.monotonic()
+    title_name = None
+    title_started_at = time.monotonic()
+    title_offset = 0
+    previous_screen = None
+    title_refresh_at = 0.0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
         running = False
 
     def redraw() -> None:
-        nonlocal rendered
+        nonlocal rendered, previous_screen, title_name, title_started_at, title_offset
+        current_title = controller.state.tape_name or "NO TAPE"
+        if (
+            controller.screen is Screen.HOME
+            and (previous_screen is not Screen.HOME or current_title != title_name)
+        ):
+            title_name = current_title
+            title_started_at = time.monotonic()
+            title_offset = 0
         rendered = controller.render(renderer, cursor_visible=cursor_visible)
         send_frame(display, rendered)
+        previous_screen = controller.screen
 
     def wait_for_release() -> None:
         while running and touch.pressed:
@@ -197,6 +218,27 @@ def main() -> int:
                         ),
                     )
                     redraw()
+            if controller.screen is Screen.HOME and now >= title_refresh_at:
+                current_title = controller.state.tape_name or "NO TAPE"
+                maximum_offset = max(
+                    0,
+                    renderer.tape_title_width(current_title)
+                    - (TAPE_TITLE_RECT[2] - TAPE_TITLE_RECT[0]),
+                )
+                next_offset = marquee_offset(
+                    now - title_started_at,
+                    maximum_offset,
+                )
+                if next_offset != title_offset:
+                    title_image = renderer.render_tape_title(
+                        current_title,
+                        offset=next_offset,
+                    )
+                    send_tape_title(display, title_image)
+                    if rendered is not None:
+                        rendered.image.paste(title_image, TAPE_TITLE_RECT[:2])
+                    title_offset = next_offset
+                title_refresh_at = now + 0.1
             if not touch.pressed:
                 if controller.screen in {Screen.FILENAME, Screen.SEARCH}:
                     if controller.editor.expire(now=now):
