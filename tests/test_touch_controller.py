@@ -105,6 +105,15 @@ class TouchUIControllerTests(unittest.TestCase):
         controller.handle_action("open:0")
         self.assertEqual("GAME 6.TZX", controller.state.tape_name)
 
+    def test_search_keeps_selected_file_path(self) -> None:
+        paths = tuple(Path("/tapes") / name for name in FILES)
+        controller = TouchUIController(FILES, file_paths=paths)
+        controller.search_query = "GAME 6"
+        controller.handle_action("files")
+        controller.handle_action("open:0")
+
+        self.assertEqual(paths[6], controller.selected_tape_path)
+
     def test_directory_picker_is_constrained_and_selects_current_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -23,6 +23,7 @@ class TouchUIController:
     """
 
     files: Sequence[str]
+    file_paths: Sequence[Path] | None = None
     state: DeckState = field(default_factory=DeckState)
     screen: Screen = Screen.HOME
     selected_file: int = 0
@@ -76,10 +77,27 @@ class TouchUIController:
 
     @property
     def filtered_files(self) -> tuple[str, ...]:
+        return tuple(self.files[index] for index in self.filtered_file_indices)
+
+    @property
+    def filtered_file_indices(self) -> tuple[int, ...]:
         needle = self.search_query.casefold().strip()
         if not needle:
-            return tuple(self.files)
-        return tuple(name for name in self.files if needle in name.casefold())
+            return tuple(range(len(self.files)))
+        return tuple(
+            index
+            for index, name in enumerate(self.files)
+            if needle in name.casefold()
+        )
+
+    @property
+    def selected_tape_path(self) -> Path | None:
+        if self.file_paths is None:
+            return None
+        indices = self.filtered_file_indices
+        if not 0 <= self.selected_file < len(indices):
+            return None
+        return Path(self.file_paths[indices[self.selected_file]])
 
     def handle_action(self, action: str) -> None:
         if self.screen is Screen.HOME:
@@ -140,8 +158,9 @@ class TouchUIController:
             self._ensure_selection_visible()
             return
         if action == "down":
-            if self.files:
-                self.selected_file = min(len(self.files) - 1, self.selected_file + 1)
+            files = self.filtered_files
+            if files:
+                self.selected_file = min(len(files) - 1, self.selected_file + 1)
                 self._ensure_selection_visible()
             return
         if action == "open-selected":
@@ -231,13 +250,11 @@ class TouchUIController:
             self.shutdown_requested = True
 
     def _open_file(self, index: int) -> None:
-        if not 0 <= index < len(self.files):
-            return
-        self.selected_file = index
-        self._ensure_selection_visible()
         files = self.filtered_files
         if not 0 <= index < len(files):
             return
+        self.selected_file = index
+        self._ensure_selection_visible()
         self.state = self.state.next_revision(
             tape_name=files[index],
             transport=TransportState.STOPPED,

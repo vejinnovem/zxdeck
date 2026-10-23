@@ -15,6 +15,7 @@ import subprocess
 import time
 
 from zxdeck.config import AppConfig
+from zxdeck.audio import AudioPlayer
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
 from zxdeck.frontends.touch.frame import image_to_rgb565
@@ -70,13 +71,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_tape_names(config, fallback: tuple[str, ...] = ()) -> tuple[str, ...]:
+def load_tape_entries(config):
     library = TapeLibrary(config)
     try:
-        return tuple(entry.name for entry in library.refresh())
+        return library.refresh()
     except StorageUnavailable as exc:
-        print(f"Tape library unavailable ({exc}); using mock files.", flush=True)
-        return fallback
+        print(f"Tape library unavailable ({exc}).", flush=True)
+        return ()
 
 
 def send_image(display: ILI9341, image) -> None:
@@ -128,12 +129,15 @@ def main() -> int:
     display = ILI9341(config.display)
     touch = XPT2046(config.touch)
 
-    tape_names = load_tape_names(
-        storage_config,
-        MOCK_FILES if args.mock_files else (),
-    )
+    tape_entries = load_tape_entries(storage_config)
+    tape_names = tuple(entry.name for entry in tape_entries)
+    tape_paths = tuple(entry.path for entry in tape_entries)
+    if not tape_names and args.mock_files:
+        tape_names = MOCK_FILES
+        tape_paths = ()
     controller = TouchUIController(
         tape_names,
+        file_paths=tape_paths or None,
         state=DeckState(
             transport=TransportState.STOPPED,
             error=None if tape_names else "NO TAPE FILES",
@@ -146,6 +150,7 @@ def main() -> int:
         ),
     )
     rendered = None
+    player = AudioPlayer(app_config.audio.playback_device)
     running = True
     cursor_visible = True
     cursor_changed_at = time.monotonic()
@@ -180,6 +185,18 @@ def main() -> int:
 
         while running:
             now = time.monotonic()
+            playback_event = player.poll()
+            if playback_event is not None:
+                if playback_event.kind in {"finished", "stopped", "error"}:
+                    controller.state = controller.state.next_revision(
+                        transport=TransportState.STOPPED,
+                        error=(
+                            playback_event.message[:28].upper()
+                            if playback_event.kind == "error"
+                            else None
+                        ),
+                    )
+                    redraw()
             if not touch.pressed:
                 if controller.screen in {Screen.FILENAME, Screen.SEARCH}:
                     if controller.editor.expire(now=now):
@@ -210,7 +227,24 @@ def main() -> int:
             send_pressed_feedback(display, rendered, action)
             wait_for_release()
             previous_storage_path = controller.selected_storage_path
+            previous_transport = controller.state.transport
             controller.handle_action(action)
+
+            if action == "play" and controller.state.transport is TransportState.PLAYING:
+                tape_path = controller.selected_tape_path
+                if tape_path is None:
+                    controller.state = controller.state.next_revision(
+                        transport=TransportState.STOPPED,
+                        error="TAPE PATH UNAVAILABLE",
+                    )
+                else:
+                    player.play(tape_path)
+            elif (
+                action in {"stop", "rewind", "new", "record"}
+                or controller.state.transport is not previous_transport
+                and controller.state.transport is not TransportState.PLAYING
+            ):
+                player.stop()
             cursor_visible = True
             cursor_changed_at = time.monotonic()
             redraw()
@@ -227,10 +261,9 @@ def main() -> int:
                     app_config.storage,
                     path=controller.selected_storage_path,
                 )
-                controller.files = load_tape_names(
-                    selected_config,
-                    MOCK_FILES if args.mock_files else (),
-                )
+                tape_entries = load_tape_entries(selected_config)
+                controller.files = tuple(entry.name for entry in tape_entries)
+                controller.file_paths = tuple(entry.path for entry in tape_entries)
                 controller.search_query = ""
 
             if controller.shutdown_requested:
@@ -253,6 +286,7 @@ def main() -> int:
                     redraw()
 
     finally:
+        player.close()
         touch.close()
         display.close()
     return 0

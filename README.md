@@ -29,8 +29,12 @@ hardware-independent code, includes a classic 3x4 multi-tap phone keypad for
 text entry, and can be previewed as PNGs or run interactively on the tested
 TFT/touch hardware. The file browser uses the configured, validated tape
 library; built-in filenames are only available through the explicit
-`--mock-files` development option. Tape parsing/generation, audio and the web
-frontend are not implemented yet.
+`--mock-files` development option. PLAY now decodes TAP plus the common TZX
+standard, turbo, pure-tone, pulse-sequence, pure-data and direct-recording
+blocks in an isolated process and streams unsigned 8-bit mono PCM to the ALSA
+playback device selected in the application configuration. Rare generalized,
+CSW and control-flow TZX blocks fail visibly instead of producing an incorrect
+signal. Recording and the web frontend are not implemented yet.
 
 See:
 
@@ -55,7 +59,7 @@ Generate hardware-free UI previews with:
 PYTHONPATH=src python3 tools/ui_preview.py
 ```
 
-On the configured Raspberry Pi prototype, run the interactive mock UI with:
+On the configured Raspberry Pi prototype, run the interactive UI with:
 
 ```bash
 PYTHONPATH=src .venv/bin/python tools/ui_touch_demo.py

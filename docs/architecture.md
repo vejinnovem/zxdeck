@@ -6,9 +6,9 @@
 future local touchscreen UI and web UI both dispatch commands to this backend
 and subscribe to immutable `DeckState` snapshots.
 
-Tape parsing/generation, audio input/output and storage will be implemented as
-backend services and command handlers. They must not be implemented in either
-frontend.
+Storage indexing and tape playback already live in reusable modules outside the
+touch renderer. They will move behind shared backend command handlers before a
+second frontend is added. Audio capture is not implemented yet.
 
 ```text
 touch frontend ─┐
@@ -23,15 +23,16 @@ local IPC adapter without moving domain logic into the web layer.
 
 ## Real-time audio boundary
 
-The future audio engine must not run in the touchscreen event loop. It should
-own the ALSA device and bounded, preallocated buffers in a separate process or
-an otherwise isolated real-time worker. Communication with the backend should
-use commands and small state snapshots.
+The playback engine does not run in the touchscreen event loop. A disposable
+worker process owns `aplay`, decodes the tape stream and feeds it through a
+bounded 32 KiB PCM buffer. The UI exchanges only start/stop requests and small
+status events with that process. Capture should follow the same isolation rule.
 
 An audio callback must never render with Pillow, write to the TFT over SPI,
-scan storage or parse tape files. Those operations belong outside the callback
-and feed or drain the audio worker through a queue or ring buffer. Playback and
-recording tests must explicitly detect underruns, overruns and dropped samples.
+scan storage or parse tape files. Playback currently uses blocking ALSA writes
+instead of a callback; parsing and PCM generation happen in the isolated
+worker. Future capture tests must explicitly detect overruns and dropped
+samples.
 
 The touch UI remains event-driven. Static screens are not refreshed on a timer;
 the filename cursor is the only periodic animation and is only active while
