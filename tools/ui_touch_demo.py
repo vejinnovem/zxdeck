@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Interactive ZX Deck UI prototype for the tested 240x320 TFT and XPT2046.
+"""Interactive ZX Deck application shell for the tested TFT and touchscreen.
 
-This is deliberately a frontend/ergonomics demo. Transport actions only mutate
-mock DeckState data; they do not access audio, tape parsing or storage.
+The tape library is real. Transport actions still stop at the backend boundary
+until tape parsing and the isolated audio worker are connected.
 """
 
 from __future__ import annotations
@@ -58,6 +58,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--font", type=Path, default=DEFAULT_FONT)
     parser.add_argument("--no-splash", action="store_true")
     parser.add_argument(
+        "--mock-files",
+        action="store_true",
+        help="use built-in filenames only when the configured library is unavailable",
+    )
+    parser.add_argument(
         "--allow-poweroff",
         action="store_true",
         help="allow the confirmed Power Off action to shut down the OS",
@@ -65,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_tape_names(config, fallback: tuple[str, ...] = MOCK_FILES) -> tuple[str, ...]:
+def load_tape_names(config, fallback: tuple[str, ...] = ()) -> tuple[str, ...]:
     library = TapeLibrary(config)
     try:
         return tuple(entry.name for entry in library.refresh())
@@ -123,13 +128,15 @@ def main() -> int:
     display = ILI9341(config.display)
     touch = XPT2046(config.touch)
 
+    tape_names = load_tape_names(
+        storage_config,
+        MOCK_FILES if args.mock_files else (),
+    )
     controller = TouchUIController(
-        load_tape_names(storage_config),
+        tape_names,
         state=DeckState(
             transport=TransportState.STOPPED,
-            tape_name="MANIC MINER.TZX",
-            position_seconds=102,
-            duration_seconds=196,
+            error=None if tape_names else "NO TAPE FILES",
         ),
         directory_browser=DirectoryBrowser(
             storage_config.browse_root,
@@ -220,7 +227,10 @@ def main() -> int:
                     app_config.storage,
                     path=controller.selected_storage_path,
                 )
-                controller.files = load_tape_names(selected_config)
+                controller.files = load_tape_names(
+                    selected_config,
+                    MOCK_FILES if args.mock_files else (),
+                )
                 controller.search_query = ""
 
             if controller.shutdown_requested:

@@ -16,7 +16,7 @@ class TouchUIControllerTests(unittest.TestCase):
     def test_transport_actions_update_mock_state(self) -> None:
         controller = TouchUIController(
             FILES,
-            state=DeckState(position_seconds=42),
+            state=DeckState(position_seconds=42, tape_name="GAME 0.TZX"),
         )
 
         controller.handle_action("play")
@@ -28,6 +28,16 @@ class TouchUIControllerTests(unittest.TestCase):
         controller.handle_action("stop")
         self.assertEqual(TransportState.STOPPED, controller.state.transport)
         self.assertEqual(4, controller.state.revision)
+
+    def test_play_and_record_require_a_selected_or_named_tape(self) -> None:
+        controller = TouchUIController(FILES)
+        controller.handle_action("play")
+        self.assertEqual(TransportState.STOPPED, controller.state.transport)
+        self.assertEqual("SELECT A TAPE", controller.state.error)
+
+        controller.handle_action("record")
+        self.assertEqual(TransportState.STOPPED, controller.state.transport)
+        self.assertEqual("NAME THE TAPE", controller.state.error)
 
     def test_seventh_file_can_be_reached_and_opened(self) -> None:
         controller = TouchUIController(FILES)

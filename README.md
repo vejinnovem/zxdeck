@@ -27,9 +27,10 @@ A first 240x320 touchscreen UI prototype is also present. It renders Home,
 Files, Search, Filename, Settings, Directory and Power screens from
 hardware-independent code, includes a classic 3x4 multi-tap phone keypad for
 text entry, and can be previewed as PNGs or run interactively on the tested
-TFT/touch hardware. Transport actions still use mock state. Tape
-parsing/generation, audio and the web frontend are not implemented yet; storage
-configuration and filename indexing are present as preparatory infrastructure.
+TFT/touch hardware. The file browser uses the configured, validated tape
+library; built-in filenames are only available through the explicit
+`--mock-files` development option. Tape parsing/generation, audio and the web
+frontend are not implemented yet.
 
 See:
 

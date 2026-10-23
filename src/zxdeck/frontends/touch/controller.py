@@ -107,11 +107,23 @@ class TouchUIController:
         elif action == "settings":
             self.screen = Screen.SETTINGS
         elif action == "play":
-            self.state = self.state.next_revision(transport=TransportState.PLAYING)
+            if self.state.tape_name is None:
+                self.state = self.state.next_revision(error="SELECT A TAPE")
+            else:
+                self.state = self.state.next_revision(
+                    transport=TransportState.PLAYING,
+                    error=None,
+                )
         elif action == "stop":
             self.state = self.state.next_revision(transport=TransportState.STOPPED)
         elif action == "record":
-            self.state = self.state.next_revision(transport=TransportState.RECORDING)
+            if self.state.tape_name is None:
+                self.state = self.state.next_revision(error="NAME THE TAPE")
+            else:
+                self.state = self.state.next_revision(
+                    transport=TransportState.RECORDING,
+                    error=None,
+                )
         elif action == "rewind":
             self.state = self.state.next_revision(position_seconds=0.0)
 
