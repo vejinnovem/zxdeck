@@ -6,6 +6,11 @@ a Raspberry Pi. Playback and recording are both planned.
 > **Transparency:** ZX Deck is a vibe-coded project. I am not a programmer;
 > the project is being built with AI assistance, with changes checked by
 > automated tests and real-hardware testing.
+>
+> **Use at your own risk:** ZX Deck is a hobby project provided as-is, without
+> warranty. Software, wiring, GPIO, audio connections and hardware instructions
+> should be verified before use. The author does not guarantee suitability for
+> any particular hardware or configuration.
 
 ## Recommended platform
 
@@ -35,14 +40,17 @@ A first 240x320 touchscreen UI prototype is also present. It renders Home,
 Files, Search, Filename, Settings, Directory and Power screens from
 hardware-independent code, includes a classic 3x4 multi-tap phone keypad for
 text entry, and can be previewed as PNGs or run interactively on the tested
-TFT/touch hardware. The file browser uses the configured, validated tape
-library; built-in filenames are only available through the explicit
-`--mock-files` development option. PLAY now decodes TAP plus the common TZX
-standard, turbo, pure-tone, pulse-sequence, pure-data and direct-recording
-blocks in an isolated process and streams unsigned 8-bit mono PCM to the ALSA
-playback device selected in the application configuration. Rare generalized,
-CSW and control-flow TZX blocks fail visibly instead of producing an incorrect
-signal. Recording and the web frontend are not implemented yet.
+TFT/touch hardware. The Settings screen also shows the current IPv4 address for
+SSH and diagnostics when one is available.
+
+The file browser uses the configured, validated tape library; built-in
+filenames are only available through the explicit `--mock-files` development
+option. PLAY now decodes TAP plus the common TZX standard, turbo, pure-tone,
+pulse-sequence, pure-data and direct-recording blocks in an isolated process
+and streams unsigned 8-bit mono PCM to the ALSA playback device selected in the
+application configuration. Rare generalized, CSW and control-flow TZX blocks
+fail visibly instead of producing an incorrect signal. Recording and the web
+frontend are not implemented yet.
 
 See:
 
@@ -50,8 +58,19 @@ See:
 - `docs/ui-prototype.md` for the current UI rules and keypad behaviour;
 - `docs/storage.md` for directory selection, removable media and indexing;
 - `docs/audio.md` for stable ALSA device selection;
+- `docs/network.md` for Wi-Fi, IP display, future Web UI and update rules;
+- `docs/network-file-transfer.md` for optional SMB file transfer on a trusted LAN;
 - `docs/hardware/display.md` for wiring and verified parameters;
 - `docs/hardware/raspberry-pi-setup.md` for clean-system setup.
+
+## Problems and feedback
+
+Please use [GitHub Issues](https://github.com/vejinnovem/zxdeck/issues) for bugs,
+hardware compatibility reports, installation problems and feature requests.
+For a bug, include the ZX Deck commit/version, Raspberry Pi model, Raspberry Pi
+OS version, ZX Spectrum model, display/touch hardware, USB audio device, steps
+to reproduce the problem and relevant logs where possible. Issue templates are
+provided to make reports easier to diagnose.
 
 ## Development checks
 

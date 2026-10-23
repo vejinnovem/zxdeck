@@ -49,6 +49,17 @@ tape list. It shows directories only, supports parent/up/down navigation and
 cannot move above `browse_root`. `USE` selects the current directory. This
 allows a path to be chosen without typing Linux paths on the 240x320 screen.
 
+## Network file transfer
+
+For a home installation, the tape library can optionally be shared over SMB so
+TAP/TZX/PZX files can be copied from another computer without SSH or removing
+the Raspberry Pi microSD card. SMB is not required by ZX Deck itself and should
+remain an opt-in operating-system service.
+
+See `docs/network-file-transfer.md` for a Samba example. The share is intended
+for a trusted LAN/Wi-Fi network only; do not port-forward SMB or expose TCP 445
+or 139 directly to the Internet.
+
 ## Large libraries
 
 Tape files do not need physical A-Z directories. `TapeLibrary` scans filenames

@@ -1,0 +1,86 @@
+name: Bug report
+description: Report a reproducible ZX Deck software, hardware-integration or installation problem
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. ZX Deck is a vibe-coded hobby project, so detailed hardware and reproduction information is especially useful.
+  - type: input
+    id: revision
+    attributes:
+      label: ZX Deck version / commit
+      description: Paste `git rev-parse --short HEAD` if possible.
+      placeholder: e.g. 49e2a67d
+    validations:
+      required: true
+  - type: input
+    id: pi
+    attributes:
+      label: Raspberry Pi model
+      placeholder: Raspberry Pi Zero W
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include Raspberry Pi OS release and 32/64-bit architecture.
+      placeholder: Raspberry Pi OS 13 (Trixie), 32-bit
+    validations:
+      required: true
+  - type: input
+    id: spectrum
+    attributes:
+      label: ZX Spectrum / compatible model
+      placeholder: e.g. Spectrum 48K, 128K, Harlequin 128
+  - type: input
+    id: display
+    attributes:
+      label: Display and touch hardware
+      placeholder: e.g. 2.8-inch ILI9341 + XPT2046, or no display
+  - type: input
+    id: audio
+    attributes:
+      label: USB audio device
+      placeholder: Brand/model or `aplay -l` / `arecord -l` description
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Describe exactly what you did and what happened.
+      placeholder: |
+        1. Start ZX Deck
+        2. Select ...
+        3. Press ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / diagnostics
+      description: Remove passwords, Wi-Fi secrets and other private information before posting.
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Photos, screenshots, tape-image details or anything else that may help.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed passwords, Wi-Fi credentials and other secrets from logs/screenshots.
+          required: true
+        - label: I searched existing Issues for the same problem.
+          required: true

@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest an improvement or new capability for ZX Deck
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem first, then the feature you think would solve it. Hardware-impacting ideas should include the intended Raspberry Pi / retro-computer context.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What is difficult or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behaviour you would like ZX Deck to provide.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Tape playback
+        - Recording / decoding
+        - Touchscreen UI
+        - Web UI
+        - Audio
+        - Storage / SMB
+        - Wi-Fi / networking
+        - Installation / updates
+        - Hardware / GPIO
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Relevant hardware
+      description: Add Raspberry Pi, display, audio adapter or Spectrum model if the request depends on hardware.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional — mention workarounds or other approaches.
