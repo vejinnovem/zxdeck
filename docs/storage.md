@@ -71,3 +71,15 @@ test corpus. Use `.tap`, `.tzx` or `.pzx` files for zxdeck audio tests.
 
 References: [World of Spectrum Z80 format](https://worldofspectrum.org/faq/reference/z80format.htm)
 and [TZX format specification](https://www.worldofspectrum.net/TZXformat.html).
+
+Before copying a mixed archive to the device, build a strict library with:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/filter_tape_library.py SOURCE DESTINATION
+```
+
+The filter validates TAP block boundaries and XOR checksums, recognises TZX/PZX
+headers, repairs a `.tzx` filename when its content is actually TAP, excludes
+disk/snapshot formats, and writes `_zxdeck-filter-report.tsv`. Files with valid
+block structure but bad TAP checksums stay in the report unless
+`--include-checksum-warnings` is explicitly requested.
