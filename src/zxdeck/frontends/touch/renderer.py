@@ -72,6 +72,8 @@ class TouchRenderer:
     def __init__(self, *, font_path: str | Path | None = None) -> None:
         self.font_path = Path(font_path) if font_path is not None else None
         self._fonts: dict[int, object] = {}
+        self._tape_title_cache_name: str | None = None
+        self._tape_title_cache_image = None
 
     def render_home(self, state: DeckState) -> RenderedScreen:
         image, draw = self._new_canvas()
@@ -138,26 +140,39 @@ class TouchRenderer:
         return RenderedScreen(image, tuple(targets))
 
     def tape_title_width(self, tape_name: str) -> int:
-        from PIL import Image, ImageDraw
-
-        draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-        box = draw.textbbox((0, 0), tape_name, font=self._font(16))
-        return box[2] - box[0]
+        return self._tape_title_canvas(tape_name).width
 
     def render_tape_title(self, tape_name: str, *, offset: int = 0):
         """Render the clipped Home title strip for inexpensive marquee updates."""
-        from PIL import Image, ImageDraw
-
         left, top, right, bottom = TAPE_TITLE_RECT
         width, height = right - left, bottom - top
-        image = Image.new("RGB", (width, height), BLACK)
-        draw = ImageDraw.Draw(image)
+        canvas = self._tape_title_canvas(tape_name)
+        maximum_offset = max(0, canvas.width - width)
+        left_offset = min(maximum_offset, max(0, offset))
+        return canvas.crop((left_offset, 0, left_offset + width, height))
+
+    def _tape_title_canvas(self, tape_name: str):
+        if (
+            tape_name == self._tape_title_cache_name
+            and self._tape_title_cache_image is not None
+        ):
+            return self._tape_title_cache_image
+
+        from PIL import Image, ImageDraw
+
+        viewport_width = TAPE_TITLE_RECT[2] - TAPE_TITLE_RECT[0]
+        height = TAPE_TITLE_RECT[3] - TAPE_TITLE_RECT[1]
+        measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
         font = self._font(16)
-        box = draw.textbbox((0, 0), tape_name, font=font)
+        box = measure.textbbox((0, 0), tape_name, font=font)
         text_width = box[2] - box[0]
-        x = (width - text_width) // 2 if text_width <= width else -max(0, offset)
+        canvas = Image.new("RGB", (max(viewport_width, text_width), height), BLACK)
+        draw = ImageDraw.Draw(canvas)
+        x = (viewport_width - text_width) // 2 if text_width <= viewport_width else 0
         draw.text((x, 9), tape_name, font=font, fill=WHITE, spacing=0)
-        return image
+        self._tape_title_cache_name = tape_name
+        self._tape_title_cache_image = canvas
+        return canvas
 
     def render_files(
         self,
