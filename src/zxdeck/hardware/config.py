@@ -7,6 +7,11 @@ from pathlib import Path
 import tomllib
 
 
+DEFAULT_TOUCH_CALIBRATION_STATE = (
+    Path("~/.local/state/zxdeck/touch-calibration.json").expanduser()
+)
+
+
 @dataclass(frozen=True, slots=True)
 class DisplayConfig:
     enabled: bool = False
@@ -47,8 +52,15 @@ class HardwareConfig:
             if not calibration_path.is_absolute():
                 calibration_path = config_path.parent / calibration_path
             touch_data["calibration_file"] = calibration_path.resolve()
+
+        # A calibration created on the actual device must take precedence over
+        # the repository's prototype calibration. This is the default output of
+        # tools/touch_calibrate.py and lives outside the checkout, so updates do
+        # not overwrite it or create Git conflicts.
+        if DEFAULT_TOUCH_CALIBRATION_STATE.exists():
+            touch_data["calibration_file"] = DEFAULT_TOUCH_CALIBRATION_STATE.resolve()
+
         return cls(
             display=DisplayConfig(**display_data),
             touch=TouchConfig(**touch_data),
         )
-
