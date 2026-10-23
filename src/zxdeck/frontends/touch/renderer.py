@@ -140,7 +140,11 @@ class TouchRenderer:
         return RenderedScreen(image, tuple(targets))
 
     def tape_title_width(self, tape_name: str) -> int:
-        return self._tape_title_canvas(tape_name).width
+        return self.tape_title_canvas(tape_name).width
+
+    def tape_title_canvas(self, tape_name: str):
+        """Return the cached full-width title used by partial LCD updates."""
+        return self._tape_title_canvas(tape_name)
 
     def render_tape_title(self, tape_name: str, *, offset: int = 0):
         """Render the clipped Home title strip for inexpensive marquee updates."""

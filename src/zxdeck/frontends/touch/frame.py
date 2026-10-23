@@ -26,3 +26,28 @@ def image_to_rgb565(image: "Image") -> bytes:
     # LA stores its two 8-bit channels interleaved, which is exactly the byte
     # layout needed here: high byte followed by low byte for every pixel.
     return Image.merge("LA", (high, low)).tobytes()
+
+
+def crop_rgb565(
+    pixels: bytes,
+    source_width: int,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+) -> bytes:
+    """Extract a rectangular window from an already converted RGB565 frame."""
+    if source_width <= 0 or min(x, y, width, height) < 0:
+        raise ValueError("invalid RGB565 crop dimensions")
+    stride = source_width * 2
+    if len(pixels) % stride:
+        raise ValueError("RGB565 data does not contain complete rows")
+    source_height = len(pixels) // stride
+    if x + width > source_width or y + height > source_height:
+        raise ValueError("RGB565 crop exceeds source frame")
+    row_size = width * 2
+    x_bytes = x * 2
+    return b"".join(
+        pixels[row * stride + x_bytes : row * stride + x_bytes + row_size]
+        for row in range(y, y + height)
+    )

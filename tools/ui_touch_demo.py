@@ -18,7 +18,7 @@ from zxdeck.config import AppConfig
 from zxdeck.audio import AudioPlayer
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
-from zxdeck.frontends.touch.frame import image_to_rgb565
+from zxdeck.frontends.touch.frame import crop_rgb565, image_to_rgb565
 from zxdeck.frontends.touch.renderer import TAPE_TITLE_RECT, marquee_offset
 from zxdeck.frontends.touch.splash import render_splash
 from zxdeck.hardware.calibration import TouchCalibration
@@ -95,10 +95,10 @@ def send_frame(display: ILI9341, rendered) -> None:
     send_image(display, rendered.image)
 
 
-def send_tape_title(display: ILI9341, title_image) -> None:
+def send_tape_title(display: ILI9341, title_pixels: bytes) -> None:
     left, top, right, bottom = TAPE_TITLE_RECT
     display.set_window(left, top, right - 1, bottom - 1)
-    display.write_rgb565(image_to_rgb565(title_image))
+    display.write_rgb565(title_pixels)
 
 
 def send_pressed_feedback(display: ILI9341, rendered, action: str) -> None:
@@ -166,6 +166,8 @@ def main() -> int:
     title_offset = 0
     previous_screen = None
     title_refresh_at = 0.0
+    title_rgb565 = b""
+    title_canvas_width = 0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -173,6 +175,7 @@ def main() -> int:
 
     def redraw() -> None:
         nonlocal rendered, previous_screen, title_name, title_started_at, title_offset
+        nonlocal title_rgb565, title_canvas_width
         current_title = controller.state.tape_name or "NO TAPE"
         if (
             controller.screen is Screen.HOME
@@ -181,6 +184,9 @@ def main() -> int:
             title_name = current_title
             title_started_at = time.monotonic()
             title_offset = 0
+            title_canvas = renderer.tape_title_canvas(current_title)
+            title_canvas_width = title_canvas.width
+            title_rgb565 = image_to_rgb565(title_canvas)
         rendered = controller.render(renderer, cursor_visible=cursor_visible)
         send_frame(display, rendered)
         previous_screen = controller.screen
@@ -234,7 +240,17 @@ def main() -> int:
                         current_title,
                         offset=next_offset,
                     )
-                    send_tape_title(display, title_image)
+                    title_width = TAPE_TITLE_RECT[2] - TAPE_TITLE_RECT[0]
+                    title_height = TAPE_TITLE_RECT[3] - TAPE_TITLE_RECT[1]
+                    title_pixels = crop_rgb565(
+                        title_rgb565,
+                        title_canvas_width,
+                        next_offset,
+                        0,
+                        title_width,
+                        title_height,
+                    )
+                    send_tape_title(display, title_pixels)
                     if rendered is not None:
                         rendered.image.paste(title_image, TAPE_TITLE_RECT[:2])
                     title_offset = next_offset
