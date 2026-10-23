@@ -8,10 +8,13 @@ mock DeckState data; they do not access audio, tape parsing or storage.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 import signal
+import subprocess
 import time
 
+from zxdeck.config import AppConfig
 from zxdeck.core.state import DeckState, TransportState
 from zxdeck.frontends.touch import Screen, TouchRenderer, TouchUIController
 from zxdeck.frontends.touch.frame import image_to_rgb565
@@ -20,11 +23,20 @@ from zxdeck.hardware.calibration import TouchCalibration
 from zxdeck.hardware.config import HardwareConfig
 from zxdeck.hardware.ili9341 import ILI9341
 from zxdeck.hardware.xpt2046 import XPT2046
+from zxdeck.storage import (
+    DirectoryBrowser,
+    StorageUnavailable,
+    TapeLibrary,
+    load_selected_path,
+    save_selected_path,
+)
 
 
 ROOT = Path(__file__).parents[1]
 DEFAULT_CONFIG = ROOT / "config" / "hardware.zxdeck-pi-zero.toml"
+DEFAULT_APP_CONFIG = ROOT / "config" / "application.zxdeck-pi-zero.toml"
 DEFAULT_FONT = ROOT / "assets" / "fonts" / "bescii.ttf"
+DEFAULT_STORAGE_STATE = Path("~/.local/state/zxdeck/storage-path").expanduser()
 
 MOCK_FILES = (
     "MANIC MINER.TZX",
@@ -40,10 +52,26 @@ MOCK_FILES = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--app-config", type=Path, default=DEFAULT_APP_CONFIG)
+    parser.add_argument("--storage-state", type=Path, default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--calibration", type=Path)
     parser.add_argument("--font", type=Path, default=DEFAULT_FONT)
     parser.add_argument("--no-splash", action="store_true")
+    parser.add_argument(
+        "--allow-poweroff",
+        action="store_true",
+        help="allow the confirmed Power Off action to shut down the OS",
+    )
     return parser.parse_args()
+
+
+def load_tape_names(config, fallback: tuple[str, ...] = MOCK_FILES) -> tuple[str, ...]:
+    library = TapeLibrary(config)
+    try:
+        return tuple(entry.name for entry in library.refresh())
+    except StorageUnavailable as exc:
+        print(f"Tape library unavailable ({exc}); using mock files.", flush=True)
+        return fallback
 
 
 def send_image(display: ILI9341, image) -> None:
@@ -79,6 +107,13 @@ def send_pressed_feedback(display: ILI9341, rendered, action: str) -> None:
 def main() -> int:
     args = parse_args()
     config = HardwareConfig.load(args.config)
+    app_config = AppConfig.load(args.app_config)
+    selected_storage_path = load_selected_path(
+        args.storage_state,
+        app_config.storage.path,
+        app_config.storage.browse_root,
+    )
+    storage_config = replace(app_config.storage, path=selected_storage_path)
     calibration_path = args.calibration or config.touch.calibration_file
     if calibration_path is None:
         raise SystemExit("a calibration file is required")
@@ -89,12 +124,18 @@ def main() -> int:
     touch = XPT2046(config.touch)
 
     controller = TouchUIController(
-        MOCK_FILES,
+        load_tape_names(storage_config),
         state=DeckState(
             transport=TransportState.STOPPED,
             tape_name="MANIC MINER.TZX",
             position_seconds=102,
             duration_seconds=196,
+        ),
+        directory_browser=DirectoryBrowser(
+            storage_config.browse_root,
+            selected_storage_path
+            if selected_storage_path.is_dir()
+            else storage_config.browse_root,
         ),
     )
     rendered = None
@@ -133,7 +174,7 @@ def main() -> int:
         while running:
             now = time.monotonic()
             if not touch.pressed:
-                if controller.screen is Screen.FILENAME:
+                if controller.screen in {Screen.FILENAME, Screen.SEARCH}:
                     if controller.editor.expire(now=now):
                         cursor_visible = True
                         cursor_changed_at = now
@@ -161,10 +202,45 @@ def main() -> int:
 
             send_pressed_feedback(display, rendered, action)
             wait_for_release()
+            previous_storage_path = controller.selected_storage_path
             controller.handle_action(action)
             cursor_visible = True
             cursor_changed_at = time.monotonic()
             redraw()
+
+            if (
+                controller.selected_storage_path is not None
+                and controller.selected_storage_path != previous_storage_path
+            ):
+                save_selected_path(
+                    args.storage_state,
+                    controller.selected_storage_path,
+                )
+                selected_config = replace(
+                    app_config.storage,
+                    path=controller.selected_storage_path,
+                )
+                controller.files = load_tape_names(selected_config)
+                controller.search_query = ""
+
+            if controller.shutdown_requested:
+                if args.allow_poweroff:
+                    print("Confirmed system poweroff.", flush=True)
+                    time.sleep(0.5)
+                    subprocess.run(
+                        ("sudo", "-n", "systemctl", "poweroff"),
+                        check=True,
+                    )
+                    running = False
+                else:
+                    print(
+                        "Poweroff requested but --allow-poweroff is not enabled.",
+                        flush=True,
+                    )
+                    time.sleep(0.5)
+                    controller.shutdown_requested = False
+                    controller.screen = Screen.SETTINGS
+                    redraw()
 
     finally:
         touch.close()

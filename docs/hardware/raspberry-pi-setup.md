@@ -110,5 +110,28 @@ pixel font during visual experiments.
 - `config/touch-calibration.zxdeck.json`: tested calibration for this physical
   prototype and portrait orientation.
 
+## 7. Install automatic startup
+
+After tests pass, install a system service generated for the absolute path of
+the current checkout:
+
+```bash
+sudo .venv/bin/python tools/install_service.py --user vejin
+```
+
+The installer writes `/etc/systemd/system/zxdeck.service`, reloads systemd and
+enables the service immediately and for future boots. The application runs as
+the unprivileged user with only the supplementary `spi` and `gpio` groups. Its
+confirmed Power Off screen calls `sudo -n systemctl poweroff`; configure a
+matching non-interactive sudo policy before enabling that action.
+
+Useful operations:
+
+```bash
+sudo systemctl status zxdeck.service
+sudo systemctl restart zxdeck.service
+sudo journalctl -u zxdeck.service -f
+```
+
 Do not commit newly generated runtime calibration files, logs, camera images,
 virtual environments or Python caches.

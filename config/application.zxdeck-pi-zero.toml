@@ -1,0 +1,10 @@
+[storage]
+path = "~/.local/share/zxdeck/tapes"
+require_mount = false
+browse_root = "/"
+recursive = true
+extensions = [".tap", ".tzx", ".pzx"]
+
+[audio]
+capture_device = "default"
+playback_device = "default"

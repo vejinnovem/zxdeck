@@ -19,11 +19,14 @@ before those services exist.
 ## Initial screens
 
 1. Home: current tape, progress, transport controls and navigation.
-2. Files: a simple list/browser suitable for touch, with Up/Down selection and
-   automatic scrolling when more than six entries are present.
-3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad.
-4. Settings: initially a placeholder; web-only settings may later include the
-   preferred text-input method.
+2. Files: a simple list/browser suitable for touch, with Up/Down selection,
+   automatic scrolling and multi-tap search.
+3. Filename: text field plus a Nokia-style 3x4 multi-tap keypad. Entering this
+   screen always stops transport; only an explicit REC press may start mock
+   recording.
+4. Settings: tape-directory selection and a confirmed system Power Off action.
+5. Directory picker: directory-only Linux navigation constrained by the
+   configured browse root.
 
 ## Multi-tap keypad
 
@@ -54,6 +57,18 @@ Default mapping:
 
 The backend only receives the resulting filename/text. It must not know whether
 that text came from the TFT keypad, the web keypad or a phone's native keyboard.
+
+## Safe shutdown
+
+Power Off is deliberately a two-screen action: Settings opens a confirmation
+screen, and only the red confirmation target requests system shutdown. The
+hardware adapter must redraw a `SHUTTING DOWN` screen before invoking the
+privileged operating-system action. The development demo ignores the request
+unless `--allow-poweroff` was explicitly supplied.
+
+The TFT backlight is not currently software-controlled, so it is not a reliable
+shutdown-complete indicator. After confirmation, wait for the Raspberry Pi's
+green ACT LED to stop showing storage activity before removing power.
 
 ## Typography
 

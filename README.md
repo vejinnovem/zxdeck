@@ -24,16 +24,19 @@ extracted into reusable modules. Standalone diagnostic and calibration tools
 are available.
 
 A first 240x320 touchscreen UI prototype is also present. It renders Home,
-Files, Filename and Settings screens from hardware-independent code, includes a
-classic 3x4 multi-tap phone keypad for text entry, and can be previewed as PNGs
-or run interactively on the tested TFT/touch hardware. Transport, file and save
-actions currently operate on mock state only: tape parsing/generation, audio,
-storage and the web frontend are not implemented yet.
+Files, Search, Filename, Settings, Directory and Power screens from
+hardware-independent code, includes a classic 3x4 multi-tap phone keypad for
+text entry, and can be previewed as PNGs or run interactively on the tested
+TFT/touch hardware. Transport actions still use mock state. Tape
+parsing/generation, audio and the web frontend are not implemented yet; storage
+configuration and filename indexing are present as preparatory infrastructure.
 
 See:
 
 - `docs/architecture.md` for application boundaries;
 - `docs/ui-prototype.md` for the current UI rules and keypad behaviour;
+- `docs/storage.md` for directory selection, removable media and indexing;
+- `docs/audio.md` for stable ALSA device selection;
 - `docs/hardware/display.md` for wiring and verified parameters;
 - `docs/hardware/raspberry-pi-setup.md` for clean-system setup.
 

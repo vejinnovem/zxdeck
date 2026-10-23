@@ -37,7 +37,10 @@ class Screen(str, Enum):
     HOME = "home"
     FILES = "files"
     FILENAME = "filename"
+    SEARCH = "search"
     SETTINGS = "settings"
+    DIRECTORIES = "directories"
+    POWER = "power"
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,10 +142,12 @@ class TouchRenderer:
         *,
         selected: int = 0,
         offset: int = 0,
+        query: str = "",
     ) -> RenderedScreen:
         image, draw = self._new_canvas()
         targets: list[HitTarget] = []
-        self._header(draw, "FILES", f"{len(files)}")
+        title = "FILES" if not query else f"FILES:{query[:9]}"
+        self._header(draw, title, f"{len(files)}")
 
         visible = files[offset : offset + 6]
         row_top = 32
@@ -160,17 +165,17 @@ class TouchRenderer:
         back_rect = (0, 276, 60, 320)
         up_rect = (60, 276, 120, 320)
         down_rect = (120, 276, 180, 320)
-        select_rect = (180, 276, 240, 320)
+        search_rect = (180, 276, 240, 320)
         self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
         self._button(draw, up_rect, "UP", accent=YELLOW, squared=True)
         self._button(draw, down_rect, "DOWN", accent=YELLOW, squared=True)
-        self._button(draw, select_rect, "OPEN", accent=GREEN, squared=True)
+        self._button(draw, search_rect, "FIND", accent=GREEN, squared=True)
         targets.extend(
             (
                 HitTarget("back", back_rect),
                 HitTarget("up", up_rect),
                 HitTarget("down", down_rect),
-                HitTarget("open-selected", select_rect),
+                HitTarget("search", search_rect),
             )
         )
         return RenderedScreen(image, tuple(targets))
@@ -180,10 +185,13 @@ class TouchRenderer:
         editor: MultiTapEditor,
         *,
         cursor_visible: bool = True,
+        title: str = "SAVE AS",
+        accept_label: str = "SAVE",
+        accept_action: str = "save",
     ) -> RenderedScreen:
         image, draw = self._new_canvas()
         targets: list[HitTarget] = []
-        self._header(draw, "SAVE AS", editor.mode.value)
+        self._header(draw, title, editor.mode.value)
 
         draw.rectangle((8, 32, 232, 67), outline=CYAN)
         show_cursor = cursor_visible and not editor.has_pending_character
@@ -220,18 +228,106 @@ class TouchRenderer:
         cancel_rect = (0, 270, 120, 320)
         save_rect = (120, 270, 240, 320)
         self._button(draw, cancel_rect, "CANCEL", accent=RED, squared=True)
-        self._button(draw, save_rect, "SAVE", accent=GREEN, squared=True)
-        targets.extend((HitTarget("cancel", cancel_rect), HitTarget("save", save_rect)))
+        self._button(draw, save_rect, accept_label, accent=GREEN, squared=True)
+        targets.extend(
+            (HitTarget("cancel", cancel_rect), HitTarget(accept_action, save_rect))
+        )
         return RenderedScreen(image, tuple(targets))
+
+    def render_search(
+        self,
+        editor: MultiTapEditor,
+        *,
+        cursor_visible: bool = True,
+    ) -> RenderedScreen:
+        return self.render_filename(
+            editor,
+            cursor_visible=cursor_visible,
+            title="SEARCH",
+            accept_label="FIND",
+            accept_action="apply-search",
+        )
 
     def render_settings(self) -> RenderedScreen:
         image, draw = self._new_canvas()
+        targets: list[HitTarget] = []
         self._header(draw, "SETTINGS", "DEVICE")
-        self._center_text(draw, "DISPLAY SETTINGS", 75, size=12)
-        self._center_text(draw, "WEB OPTIONS LIVE IN WEB UI", 118, size=8, fill=DIM)
+
+        library_rect = (20, 65, 220, 115)
+        power_rect = (20, 145, 220, 195)
+        self._button(draw, library_rect, "TAPE DIRECTORY", accent=CYAN)
+        self._button(draw, power_rect, "POWER OFF", accent=RED)
+        targets.extend(
+            (
+                HitTarget("directories", library_rect),
+                HitTarget("power", power_rect),
+            )
+        )
+
         back_rect = (0, 276, 240, 320)
         self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
-        return RenderedScreen(image, (HitTarget("back", back_rect),))
+        targets.append(HitTarget("back", back_rect))
+        return RenderedScreen(image, tuple(targets))
+
+    def render_directories(
+        self,
+        current: Path,
+        directories: Sequence[str],
+        *,
+        selected: int = 0,
+        offset: int = 0,
+    ) -> RenderedScreen:
+        image, draw = self._new_canvas()
+        targets: list[HitTarget] = []
+        self._header(draw, "TAPE DIRECTORY", f"{len(directories)}")
+        self._text(draw, self._short_path(current), (8, 32), size=8, fill=CYAN)
+
+        visible = directories[offset : offset + 5]
+        for index, name in enumerate(visible):
+            absolute_index = offset + index
+            top = 52 + index * 40
+            rect = (8, top, 232, top + 35)
+            if absolute_index == selected:
+                draw.rectangle(rect, fill=(30, 60, 65), outline=CYAN)
+            else:
+                draw.rectangle(rect, outline=(55, 55, 55))
+            self._text(draw, f"> {name[:22]}", (14, top + 10), size=10)
+            targets.append(HitTarget(f"directory:{absolute_index}", rect))
+
+        footer = (
+            ("back", "BACK", 0, CYAN),
+            ("parent", "PARENT", 48, YELLOW),
+            ("directory-up", "UP", 96, YELLOW),
+            ("directory-down", "DOWN", 144, YELLOW),
+            ("use-directory", "USE", 192, GREEN),
+        )
+        for action, label, left, accent in footer:
+            rect = (left, 276, left + 48, 320)
+            self._button(draw, rect, label, accent=accent, squared=True)
+            targets.append(HitTarget(action, rect))
+        return RenderedScreen(image, tuple(targets))
+
+    def render_power(self, *, requested: bool = False) -> RenderedScreen:
+        image, draw = self._new_canvas()
+        self._header(draw, "POWER", "SYSTEM")
+        if requested:
+            self._center_text(draw, "SHUTTING DOWN", 112, size=16, fill=RED)
+            self._center_text(draw, "WAIT BEFORE REMOVING POWER", 155, size=8)
+            return RenderedScreen(image)
+
+        self._center_text(draw, "SHUT DOWN ZX DECK?", 85, size=12)
+        self._center_text(draw, "WAIT FOR THE GREEN ACT LED", 125, size=8, fill=DIM)
+        cancel_rect = (0, 270, 120, 320)
+        power_rect = (120, 270, 240, 320)
+        self._button(draw, cancel_rect, "CANCEL", accent=CYAN, squared=True)
+        self._button(draw, power_rect, "POWER OFF", accent=RED, squared=True)
+        return RenderedScreen(
+            image,
+            (
+                HitTarget("cancel", cancel_rect),
+                HitTarget("confirm-poweroff", power_rect),
+            ),
+        )
 
     def _new_canvas(self):
         try:
@@ -257,6 +353,13 @@ class TouchRenderer:
                     font = ImageFont.load_default()
             self._fonts[size] = font
         return font
+
+    @staticmethod
+    def _short_path(path: Path, limit: int = 28) -> str:
+        value = str(path)
+        if len(value) <= limit:
+            return value
+        return "..." + value[-(limit - 3) :]
 
     def _header(self, draw, left: str, right: str) -> None:
         draw.rectangle((0, 0, WIDTH, 25), fill=(10, 10, 10))

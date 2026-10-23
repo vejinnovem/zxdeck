@@ -1,0 +1,19 @@
+# Application choices are separate from GPIO/SPI wiring.
+[storage]
+path = "~/.local/share/zxdeck/tapes"
+require_mount = false
+browse_root = "/"
+recursive = true
+extensions = [".tap", ".tzx", ".pzx"]
+
+[audio]
+# Prefer stable ALSA names such as "plughw:CARD=Device,DEV=0" once the USB
+# interface is connected. Numeric card indexes may change between boots.
+capture_device = "default"
+playback_device = "default"
+
+# For removable media mounted by Linux, a typical storage section is:
+# path = "/mnt/zxdeck/tapes"
+# browse_root = "/mnt/zxdeck"
+# require_mount = true
+# mount_path = "/mnt/zxdeck"

@@ -65,6 +65,19 @@ def main() -> int:
     settings = renderer.render_settings()
     settings.image.save(args.output / "settings.png")
 
+    search = renderer.render_search(MultiTapEditor(text="DIZZY"))
+    search.image.save(args.output / "search.png")
+
+    directories = renderer.render_directories(
+        Path("/mnt/zxdeck/tapes"),
+        ("A-G", "H-N", "O-T", "U-Z", "Homebrew", "Recordings"),
+        selected=1,
+    )
+    directories.image.save(args.output / "directories.png")
+
+    power = renderer.render_power()
+    power.image.save(args.output / "power.png")
+
     print(f"Wrote UI previews to {args.output}")
     if font_path is None:
         print(
