@@ -118,6 +118,7 @@ def parse_nmcli_wifi(output: str) -> tuple[WifiNetwork, ...]:
 def _nmcli(
     *args: str,
     timeout: float = 15.0,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str] | None:
     env = dict(os.environ)
     env["LC_ALL"] = "C"
@@ -127,6 +128,7 @@ def _nmcli(
             check=False,
             capture_output=True,
             text=True,
+            input=input_text,
             timeout=timeout,
             env=env,
         )
@@ -173,10 +175,21 @@ def connect_wifi(
     ssid = ssid.strip()
     if not ssid:
         return False, "NO SSID SELECTED"
-    command = ["--wait", str(max(1, int(timeout))), "device", "wifi", "connect", ssid]
-    if password:
-        command.extend(("password", password))
-    result = _nmcli(*command, timeout=timeout + 5.0)
+    command = [
+        "--wait",
+        str(max(1, int(timeout))),
+        "--ask",
+        "device",
+        "wifi",
+        "connect",
+        ssid,
+    ]
+    input_text = password + "\n" if password else None
+    result = _nmcli(
+        *command,
+        timeout=timeout + 5.0,
+        input_text=input_text,
+    )
     if result is None:
         return False, "NMCLI UNAVAILABLE"
     detail = (result.stderr or result.stdout).strip()
