@@ -2,9 +2,8 @@
 
 ZX Deck is developed and tested on 32-bit Raspberry Pi OS 13 (Trixie). On
 current Raspberry Pi OS releases, NetworkManager is the normal network
-configuration layer, so future Wi-Fi management in ZX Deck should wrap
-NetworkManager instead of editing legacy `dhcpcd` or `wpa_supplicant`
-configuration directly.
+configuration layer, so ZX Deck wraps NetworkManager rather than editing legacy
+`dhcpcd` or `wpa_supplicant` configuration directly.
 
 ## Current behaviour
 
@@ -13,6 +12,24 @@ the operating system. Its main purpose is practical diagnostics: the owner can
 read the address from the ZX Deck display and connect over SSH without first
 opening the router administration page. If no non-loopback IPv4 address is
 available, the UI shows `NO NETWORK`.
+
+Settings also contains a **Wi-Fi** entry. Opening it requests a NetworkManager
+scan and shows visible SSIDs, signal strength, security state and the currently
+active network. `SCAN` refreshes the list. Selecting an open network connects
+immediately; selecting a secured network opens the ZX Deck multi-tap keyboard
+for the passphrase. NetworkManager owns and persists the resulting connection
+profile, so ZX Deck does not maintain its own Wi-Fi credential database.
+
+The on-screen keyboard includes common password punctuation in addition to
+letters and digits. Wi-Fi passphrases are supplied to `nmcli --ask` through
+standard input rather than being appended to the process command line, and ZX
+Deck does not log them.
+
+This implementation targets ordinary home WPA/WPA2/WPA3 personal networks.
+Enterprise authentication, captive portals and unusual NetworkManager profiles
+may still require external configuration. If NetworkManager refuses the service
+user permission to create or activate a connection, the UI reports the failure
+rather than changing system policy automatically.
 
 ## Touchscreen software updates
 
@@ -41,23 +58,6 @@ starting a second instance on the TFT.
 The updater tracks `main` for now. Tagged releases are preferable longer term
 once the project has a release process, because stable and development channels
 can then be separated.
-
-## Planned touchscreen Wi-Fi management
-
-A future Network screen should allow the device to be moved to another trusted
-Wi-Fi network without SSH. The intended flow is:
-
-1. request a NetworkManager Wi-Fi scan;
-2. show SSID, signal strength and security status with large touch targets;
-3. select a network;
-4. enter the passphrase with the ZX Deck on-screen keyboard;
-5. connect and let NetworkManager persist the profile for future automatic
-   reconnection;
-6. show the resulting SSID, connection state and IPv4 address.
-
-Production Wi-Fi handling must not put passphrases directly in process arguments
-or application logs. Prefer NetworkManager D-Bus/secret-agent interfaces or a
-protected secret mechanism.
 
 ## Planned web interface
 
