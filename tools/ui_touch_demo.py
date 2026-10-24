@@ -51,13 +51,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_tape_entries(config, progress=None):
+def load_tape_catalog(config, progress=None):
     library = TapeLibrary(config)
     try:
-        return library.refresh(progress=progress)
+        return library.catalog(progress=progress)
     except StorageUnavailable as exc:
         print(f"Tape library unavailable ({exc}).", flush=True)
-        return ()
+        return None
 
 
 def send_image(display: ILI9341, image) -> None:
@@ -130,9 +130,9 @@ def main() -> int:
         send_frame(display, renderer.render_indexing(status, count))
         progress_updated_at = now
 
-    tape_entries = load_tape_entries(storage_config, show_index_progress)
-    tape_names = tuple(entry.name for entry in tape_entries)
-    tape_paths = tuple(entry.path for entry in tape_entries)
+    tape_catalog = load_tape_catalog(storage_config, show_index_progress)
+    tape_names = tape_catalog.names if tape_catalog is not None else ()
+    tape_paths = tape_catalog.paths if tape_catalog is not None else ()
     if not tape_names and args.mock_files:
         tape_names = MOCK_FILES
         tape_paths = ()
@@ -307,9 +307,9 @@ def main() -> int:
         if controller.selected_storage_path is not None and controller.selected_storage_path != previous_storage_path:
             save_selected_path(args.storage_state, controller.selected_storage_path)
             selected_config = replace(app_config.storage, path=controller.selected_storage_path)
-            tape_entries = load_tape_entries(selected_config, show_index_progress)
-            controller.files = tuple(entry.name for entry in tape_entries)
-            controller.file_paths = tuple(entry.path for entry in tape_entries)
+            tape_catalog = load_tape_catalog(selected_config, show_index_progress)
+            controller.files = tape_catalog.names if tape_catalog is not None else ()
+            controller.file_paths = tape_catalog.paths if tape_catalog is not None else ()
             controller.search_query = ""
         cursor_visible = True
         cursor_changed_at = time.monotonic()

@@ -35,6 +35,20 @@ class TapeLibraryTests(unittest.TestCase):
 
             self.assertEqual((tape,), tuple(entry.path for entry in entries))
 
+    def test_catalog_keeps_indexed_paths_lazy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested = root / "collection"
+            nested.mkdir()
+            tape = nested / "Alpha.tap"
+            tape.touch()
+            write_tape_index(root, (Path("collection/Alpha.tap"),))
+
+            catalog = TapeLibrary(StorageConfig(path=root)).catalog()
+
+            self.assertEqual(("Alpha.tap",), tuple(catalog.names))
+            self.assertEqual(tape, catalog.paths[0])
+
     def test_invalid_index_falls_back_to_scan(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

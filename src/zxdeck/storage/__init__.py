@@ -3,6 +3,7 @@
 from .browser import DirectoryBrowser, DirectoryUnavailable
 from .library import (
     INDEX_FILENAME,
+    TapeCatalog,
     StorageUnavailable,
     TapeEntry,
     TapeLibrary,
@@ -26,6 +27,7 @@ __all__ = [
     "SaveEntry",
     "StorageUnavailable",
     "TapeEntry",
+    "TapeCatalog",
     "TapeLibrary",
     "list_save_entries",
     "write_tape_index",

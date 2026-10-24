@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 import json
 import os
@@ -21,6 +21,32 @@ class StorageUnavailable(RuntimeError):
 INDEX_FILENAME = ".zxdeck-index.json"
 INDEX_VERSION = 2
 ProgressCallback = Callable[[str, int], None]
+
+
+class IndexedPaths(Sequence[Path]):
+    """Create Path objects only for entries the controller actually selects."""
+
+    def __init__(self, root: Path, relative_paths: Sequence[str]) -> None:
+        self._root = root
+        self._relative_paths = relative_paths
+
+    def __len__(self) -> int:
+        return len(self._relative_paths)
+
+    @property
+    def relative_paths(self) -> Sequence[str]:
+        return self._relative_paths
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return tuple(self._root / value for value in self._relative_paths[index])
+        return self._root / self._relative_paths[index]
+
+
+@dataclass(frozen=True, slots=True)
+class TapeCatalog:
+    names: Sequence[str]
+    paths: Sequence[Path]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +90,30 @@ class TapeLibrary:
     @property
     def entries(self) -> tuple[TapeEntry, ...]:
         return self._entries
+
+    def catalog(self, progress: ProgressCallback | None = None) -> TapeCatalog:
+        """Return a UI-ready catalog, using lazy paths for a generated index."""
+        root = self.config.path
+        mount_path = self.config.mount_path or root
+        if self.config.require_mount and not self._mount_check(mount_path):
+            raise StorageUnavailable(f"storage path is not mounted: {mount_path}")
+        if not root.is_dir():
+            raise StorageUnavailable(f"storage directory does not exist: {root}")
+
+        if progress is not None:
+            progress("LOADING INDEX", 0)
+        if self.config.recursive:
+            indexed = load_tape_catalog(root, frozenset(self.config.extensions))
+            if indexed is not None:
+                if progress is not None:
+                    progress("INDEX READY", len(indexed.names))
+                return indexed
+
+        entries = self.refresh(progress=progress)
+        return TapeCatalog(
+            tuple(entry.name for entry in entries),
+            tuple(entry.path for entry in entries),
+        )
 
     def refresh(
         self,
@@ -157,6 +207,26 @@ def load_tape_index(
     extensions: frozenset[str],
 ) -> tuple[TapeEntry, ...] | None:
     """Load a generated relative-path index, or fall back to scanning."""
+    catalog = load_tape_catalog(root, extensions)
+    if catalog is None:
+        return None
+    if not isinstance(catalog.paths, IndexedPaths):
+        return None
+    return tuple(
+        TapeEntry.indexed(name, root, relative)
+        for name, relative in zip(
+            catalog.names,
+            catalog.paths.relative_paths,
+            strict=True,
+        )
+    )
+
+
+def load_tape_catalog(
+    root: Path,
+    extensions: frozenset[str],
+) -> TapeCatalog | None:
+    """Load pre-sorted names plus paths that remain strings until selected."""
     index_path = root / INDEX_FILENAME
     try:
         payload = json.loads(index_path.read_text(encoding="utf-8"))
@@ -168,7 +238,8 @@ def load_tape_index(
     if not isinstance(indexed_entries, list):
         return None
 
-    entries: list[TapeEntry] = []
+    names: list[str] = []
+    relative_paths: list[str] = []
     for value in indexed_entries:
         if (
             not isinstance(value, list)
@@ -177,17 +248,22 @@ def load_tape_index(
         ):
             return None
         name, relative_value = value
-        relative = Path(relative_value)
-        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        parts = relative_value.split("/")
+        if (
+            not relative_value
+            or relative_value.startswith("/")
+            or any(part in {"", ".", ".."} for part in parts)
+        ):
             return None
-        if relative.parts[0].casefold() == SAVES_DIRECTORY_NAME.casefold():
+        if parts[0].casefold() == SAVES_DIRECTORY_NAME.casefold():
             return None
-        if relative.suffix.casefold() not in extensions:
+        if not any(name.casefold().endswith(extension) for extension in extensions):
             return None
-        if name != relative.name:
+        if name != parts[-1]:
             return None
-        entries.append(TapeEntry.indexed(name, root, relative_value))
-    return tuple(entries)
+        names.append(name)
+        relative_paths.append(relative_value)
+    return TapeCatalog(tuple(names), IndexedPaths(root, relative_paths))
 
 
 def write_tape_index(root: Path, relative_paths: Iterable[Path]) -> Path:
