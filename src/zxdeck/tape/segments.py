@@ -28,6 +28,14 @@ class TapeSegment:
     label: str
 
 
+@dataclass(frozen=True, slots=True)
+class TapeTimeline:
+    """Navigable segment starts together with the full tape duration."""
+
+    segments: tuple[TapeSegment, ...]
+    duration_seconds: float
+
+
 _selected_event_indices: dict[str, int] = {}
 
 
@@ -41,11 +49,11 @@ def selected_event_index(path: str | Path) -> int:
     return _selected_event_indices.get(str(Path(path).resolve()), 0)
 
 
-def inspect_tape_segments(path: str | Path) -> tuple[TapeSegment, ...]:
-    """Return navigable signal starts without generating PCM audio.
+def inspect_tape_timeline(path: str | Path) -> TapeTimeline:
+    """Return navigable signal starts and the full logical tape duration.
 
     Standard/turbo data blocks begin with a PulseRun and become one segment.
-    Pure-data and direct-recording blocks also become segments.  The function
+    Pure-data and direct-recording blocks also become segments. The function
     intentionally stays conservative: it marks useful transport boundaries,
     not every individual pulse.
     """
@@ -79,7 +87,12 @@ def inspect_tape_segments(path: str | Path) -> tuple[TapeSegment, ...]:
 
     if not segments and events:
         segments.append(TapeSegment(0, 0, 0.0, "TAPE START"))
-    return tuple(segments)
+    return TapeTimeline(tuple(segments), elapsed)
+
+
+def inspect_tape_segments(path: str | Path) -> tuple[TapeSegment, ...]:
+    """Return only navigable segment metadata for compatibility callers."""
+    return inspect_tape_timeline(path).segments
 
 
 def _starts_segment(events: tuple[TapeEvent, ...], index: int) -> bool:

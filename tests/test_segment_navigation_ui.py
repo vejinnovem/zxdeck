@@ -42,6 +42,15 @@ class SegmentNavigationUITests(unittest.TestCase):
             self.assertEqual(1, controller.state.segment_index)
             self.assertEqual(2, controller.state.segment_count)
             self.assertEqual("PROGRAM RING", controller.state.segment_label)
+            self.assertEqual(
+                tuple(segment.start_seconds for segment in segments),
+                controller.state.segment_starts,
+            )
+            self.assertIsNotNone(controller.state.duration_seconds)
+            self.assertGreater(
+                controller.state.duration_seconds,
+                segments[-1].start_seconds,
+            )
 
             controller.handle_action("forward")
             self.assertEqual(2, controller.state.segment_index)

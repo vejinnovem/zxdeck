@@ -9,6 +9,7 @@ except ImportError:
 
 from zxdeck.core.state import DeckState
 from zxdeck.frontends.touch import DeviceTouchRenderer
+from zxdeck.frontends.touch.renderer import DIM, WHITE
 
 
 @unittest.skipIf(ImageChops is None, "Pillow is not installed")
@@ -40,6 +41,21 @@ class DeviceTouchRendererTests(unittest.TestCase):
         self.assertEqual("forward", screen.action_at(195, 150))
         self.assertEqual("stop", screen.action_at(64, 205))
         self.assertEqual("record", screen.action_at(176, 205))
+
+    def test_home_draws_segment_ticks_at_timeline_positions(self) -> None:
+        renderer = DeviceTouchRenderer()
+        screen = renderer.render_home(
+            DeckState(
+                tape_name="RING.TZX",
+                duration_seconds=10.0,
+                segment_index=2,
+                segment_count=2,
+                segment_starts=(0.0, 5.0),
+            )
+        )
+
+        self.assertEqual(DIM, screen.image.getpixel((17, 79)))
+        self.assertEqual(WHITE, screen.image.getpixel((120, 79)))
 
 
 if __name__ == "__main__":
