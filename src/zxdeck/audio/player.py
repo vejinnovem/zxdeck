@@ -13,12 +13,16 @@ from zxdeck.audio.pcm import count_pcm_samples, write_pcm
 from zxdeck.tape.pulses import iter_tape_events
 
 
+TapePhase = Literal["pilot", "data", "pause"]
+
+
 @dataclass(frozen=True, slots=True)
 class PlaybackEvent:
     kind: Literal["started", "progress", "finished", "stopped", "error"]
     message: str = ""
     position_seconds: float | None = None
     duration_seconds: float | None = None
+    phase: TapePhase | None = None
 
 
 class AudioPlayer:
@@ -147,12 +151,13 @@ def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> 
             )
         )
 
-        def report_progress(samples: int) -> None:
+        def report_phase_progress(samples: int, phase: str) -> None:
             events.put(
                 PlaybackEvent(
                     "progress",
                     position_seconds=min(duration_seconds, samples / sample_rate),
                     duration_seconds=duration_seconds,
+                    phase=phase if phase in {"pilot", "data", "pause"} else None,
                 )
             )
 
@@ -161,8 +166,9 @@ def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> 
             player.stdin,
             sample_rate=sample_rate,
             cancelled=cancelled.is_set,
+            chunk_size=8_192,
             level_percent=lambda: output_level.value,
-            progress=report_progress,
+            phase_progress=report_phase_progress,
         )
         player.stdin.close()
         return_code = player.wait()
