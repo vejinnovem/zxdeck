@@ -270,7 +270,7 @@ def main() -> int:
         redraw()
 
     def apply_action(action: str, *, persist_audio: bool = True) -> None:
-        nonlocal running, cursor_visible, cursor_changed_at, tape_entries, playback_phase, progress_animation_step
+        nonlocal running, cursor_visible, cursor_changed_at, playback_phase, progress_animation_step
         previous_storage_path = controller.selected_storage_path
         previous_transport = controller.state.transport
         previous_playback_device = controller.selected_playback_device
