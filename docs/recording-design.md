@@ -8,6 +8,20 @@ User-created game saves live below the selected tape library in a dedicated `sav
 
 This directory convention is already part of the UI even before capture is implemented, so the later REC workflow can use it without reorganising existing libraries.
 
+## Signal-phase feedback
+
+During PLAY, the progress track should also act as a tape-signal indicator inspired by the ZX Spectrum loading border:
+
+- pilot/tone/sync pulses: alternating red and blue,
+- encoded/direct data: alternating yellow and blue,
+- pause/silence: ordinary neutral progress styling.
+
+The elapsed part of the track is bright and the remaining part dimmed, so it still works as a progress bar. The stripe pattern may shift slowly on each small progress refresh to suggest the moving Spectrum border without trying to reproduce the actual hundreds-of-Hz EAR transitions on the TFT.
+
+Playback knows the phase directly from the tape-event generator, so this indication does not need to infer anything from audio.
+
+During REC there is no duration-based progress bar because recording length is unknown. Instead the REC control should blink while capture is active. Once real-time input pulse classification exists, that same button can communicate the received phase: red/blue for detected pilot/tone and yellow/blue for detected data. When no valid tape signal is detected it should fall back to a normal recording blink rather than claiming a phase.
+
 ## Intended workflow
 
 ZX Deck should treat recording as an audio-capture operation first and conversion as a separate step.
