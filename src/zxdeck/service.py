@@ -13,7 +13,6 @@ def render_systemd_unit(root: Path, user: str) -> str:
     application = root / "config" / "application.zxdeck-pi-zero.toml"
     return f"""[Unit]
 Description=ZX Deck touchscreen application
-Wants=zxdeck-splash.service
 After=local-fs.target zxdeck-splash.service
 
 [Service]
@@ -23,7 +22,7 @@ Group={user}
 SupplementaryGroups=spi gpio
 WorkingDirectory={root}
 Environment=PYTHONPATH={root / 'src'}
-ExecStartPre=+/usr/bin/systemctl stop zxdeck-splash.service
+ExecStartPre=-+/usr/bin/systemctl stop zxdeck-splash.service
 ExecStart={python} {tool} --config {hardware} --app-config {application} --allow-poweroff
 Restart=on-failure
 RestartSec=2
