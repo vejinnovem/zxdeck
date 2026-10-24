@@ -101,7 +101,7 @@ class TapeLibrary:
 
         ``force_refresh`` deliberately ignores an existing index, walks the
         configured library again and rewrites the index.  Normal startup keeps
-        the fast path and does not scan the tree when a valid index exists.
+        the fast path completely scan-free when a valid index exists.
         """
         root = self.config.path
         mount_path = self.config.mount_path or root
@@ -110,16 +110,17 @@ class TapeLibrary:
         if not root.is_dir():
             raise StorageUnavailable(f"storage directory does not exist: {root}")
 
-        if progress is not None:
-            progress("LOADING INDEX", 0)
         if self.config.recursive and not force_refresh:
             indexed = load_tape_catalog(root, frozenset(self.config.extensions))
             if indexed is not None:
-                if progress is not None:
-                    progress("INDEX READY", len(indexed.names))
+                # A healthy cache is the normal startup path.  Do not trigger
+                # the indexing progress screen for a single JSON read.
                 return indexed
 
-        entries = self.refresh(progress=progress, force=force_refresh)
+        entries = self.refresh(
+            progress=progress,
+            force=force_refresh or self.config.recursive,
+        )
         if self.config.recursive:
             # refresh() writes the new index.  Reload it so the returned path
             # sequence keeps the same lazy behaviour as normal startup.
