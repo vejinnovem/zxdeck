@@ -68,6 +68,18 @@ in-memory index. Search and A-Z grouping then operate on that index without
 touching storage again. Physical subdirectories remain supported when they are
 useful to the owner, but the UI grouping stays virtual.
 
+For very large, mostly static collections, build a persistent index after
+copying or changing files:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/build_tape_index.py TAPE_DIRECTORY
+```
+
+This writes `.zxdeck-index.json` with portable relative paths. At startup ZX
+Deck loads that file instead of walking every directory. An invalid, unsafe or
+missing index is ignored and falls back to the normal scan. The strict filter
+described below creates the same index automatically in its destination.
+
 The current touch search uses the same classic multi-tap editor as filename
 entry. An empty query restores the full library.
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 
 from zxdeck.tape import probe_tape_bytes
+from zxdeck.storage import write_tape_index
 
 
 CANDIDATE_SUFFIXES = {".tap", ".tzx", ".pzx"}
@@ -37,6 +38,7 @@ def main() -> int:
     destination.mkdir(parents=True, exist_ok=True)
 
     counts: Counter[str] = Counter()
+    indexed_paths: list[Path] = []
     report: list[str] = ["result\tdeclared\tdetected\tchecksums\tpath"]
     for path in sorted(source.rglob("*")):
         if not path.is_file():
@@ -68,6 +70,7 @@ def main() -> int:
         target = destination / target_relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
+        indexed_paths.append(target_relative)
         counts[f"accepted-{probe.detected_format}"] += 1
         report.append(
             f"accepted\t{suffix}\t{probe.detected_format}\t"
@@ -76,9 +79,11 @@ def main() -> int:
 
     report_path = destination / "_zxdeck-filter-report.tsv"
     report_path.write_text("\n".join(report) + "\n", encoding="utf-8")
+    index_path = write_tape_index(destination, indexed_paths)
     for key in sorted(counts):
         print(f"{key}: {counts[key]}")
     print(f"report: {report_path}")
+    print(f"index: {index_path}")
     return 0
 
 

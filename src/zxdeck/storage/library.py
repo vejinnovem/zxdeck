@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 
@@ -15,6 +16,10 @@ from .saves import SAVES_DIRECTORY_NAME
 
 class StorageUnavailable(RuntimeError):
     pass
+
+
+INDEX_FILENAME = ".zxdeck-index.json"
+INDEX_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +59,11 @@ class TapeLibrary:
             raise StorageUnavailable(f"storage directory does not exist: {root}")
 
         extensions = frozenset(self.config.extensions)
+        indexed = load_tape_index(root, extensions) if self.config.recursive else None
         paths: Iterable[Path]
-        if self.config.recursive:
+        if indexed is not None:
+            paths = indexed
+        elif self.config.recursive:
             paths = self._walk_main_library(root)
         else:
             paths = (
@@ -99,3 +107,44 @@ class TapeLibrary:
         for entry in self._entries:
             grouped[entry.initial].append(entry)
         return {initial: tuple(entries) for initial, entries in sorted(grouped.items())}
+
+
+def load_tape_index(root: Path, extensions: frozenset[str]) -> tuple[Path, ...] | None:
+    """Load a generated relative-path index, or fall back to scanning."""
+    index_path = root / INDEX_FILENAME
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != INDEX_VERSION:
+        return None
+    relative_paths = payload.get("paths")
+    if not isinstance(relative_paths, list):
+        return None
+
+    paths: list[Path] = []
+    for value in relative_paths:
+        if not isinstance(value, str):
+            return None
+        relative = Path(value)
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            return None
+        if relative.parts[0].casefold() == SAVES_DIRECTORY_NAME.casefold():
+            return None
+        if relative.suffix.casefold() not in extensions:
+            return None
+        paths.append(root / relative)
+    return tuple(paths)
+
+
+def write_tape_index(root: Path, relative_paths: Iterable[Path]) -> Path:
+    """Atomically write a portable index for a prepared tape directory."""
+    paths = sorted(path.as_posix() for path in relative_paths)
+    target = root / INDEX_FILENAME
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(
+        json.dumps({"version": INDEX_VERSION, "paths": paths}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    temporary.replace(target)
+    return target

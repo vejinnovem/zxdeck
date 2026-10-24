@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from zxdeck.config import StorageConfig
 from zxdeck.storage import (
@@ -12,10 +13,41 @@ from zxdeck.storage import (
     TapeLibrary,
     load_selected_path,
     save_selected_path,
+    write_tape_index,
 )
 
 
 class TapeLibraryTests(unittest.TestCase):
+    def test_generated_index_avoids_recursive_filesystem_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested = root / "collection"
+            nested.mkdir()
+            tape = nested / "Alpha.tap"
+            tape.touch()
+            write_tape_index(root, (Path("collection/Alpha.tap"),))
+
+            with patch(
+                "zxdeck.storage.library.os.walk",
+                side_effect=AssertionError("scan used"),
+            ):
+                entries = TapeLibrary(StorageConfig(path=root)).refresh()
+
+            self.assertEqual((tape,), tuple(entry.path for entry in entries))
+
+    def test_invalid_index_falls_back_to_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".zxdeck-index.json").write_text(
+                '{"version": 1, "paths": ["../outside.tap"]}', encoding="utf-8"
+            )
+            tape = root / "Safe.tap"
+            tape.touch()
+
+            entries = TapeLibrary(StorageConfig(path=root)).refresh()
+
+            self.assertEqual((tape,), tuple(entry.path for entry in entries))
+
     def test_scan_search_and_virtual_initial_groups(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
