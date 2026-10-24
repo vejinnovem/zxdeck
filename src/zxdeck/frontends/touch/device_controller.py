@@ -1,11 +1,13 @@
-"""Device-specific controller actions for ALSA mixer and Wi-Fi setup."""
+"""Device-specific controller actions for ALSA mixer, Wi-Fi and save browsing."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 from zxdeck.audio import hardware_output_state, set_hardware_output_level
+from zxdeck.storage import list_save_entries
 from zxdeck.system import WifiNetwork, connect_wifi, scan_wifi_networks
 
 from .controller import TouchUIController as BaseTouchUIController
@@ -15,6 +17,7 @@ from .renderer import RenderedScreen, Screen, TouchRenderer
 
 WIFI_NETWORKS_SCREEN = "wifi-networks"
 WIFI_PASSWORD_SCREEN = "wifi-password"
+SAVES_SCREEN = "saves"
 
 
 @dataclass(slots=True)
@@ -29,6 +32,26 @@ class DeviceTouchUIController(BaseTouchUIController):
     visible_wifi_count: int = 5
     wifi_status: str = "NOT SCANNED"
     pending_wifi_ssid: str = ""
+    save_files: Sequence[str] = ()
+    save_file_paths: Sequence[Path] = ()
+    save_selected: int = 0
+    save_offset: int = 0
+    visible_save_count: int = 6
+    active_save_path: Path | None = None
+
+    def __post_init__(self) -> None:
+        # The main runtime does not currently pass the already-selected storage
+        # path into the controller, but DirectoryBrowser starts at that path.
+        # Capture it once so SAVES is not affected by later uncommitted browsing.
+        if self.selected_storage_path is None and self.directory_browser is not None:
+            self.selected_storage_path = self.directory_browser.current
+
+    @property
+    def selected_tape_path(self) -> Path | None:
+        if self.active_save_path is not None:
+            return self.active_save_path
+        base_property = BaseTouchUIController.selected_tape_path
+        return base_property.fget(self)  # type: ignore[union-attr]
 
     def render(
         self,
@@ -55,6 +78,12 @@ class DeviceTouchUIController(BaseTouchUIController):
                 self.pending_wifi_ssid,
                 cursor_visible=cursor_visible,
             )
+        if self.screen == SAVES_SCREEN:
+            return renderer.render_saves(
+                self.save_files,
+                selected=self.save_selected,
+                offset=self.save_offset,
+            )
         # dataclass(slots=True) returns a replacement class object. Using
         # zero-argument super() in that replacement can retain the original
         # class in the __class__ closure and raise TypeError at runtime.
@@ -71,6 +100,9 @@ class DeviceTouchUIController(BaseTouchUIController):
         if self.screen == WIFI_PASSWORD_SCREEN:
             self._handle_wifi_password(action)
             return
+        if self.screen == SAVES_SCREEN:
+            self._handle_saves(action)
+            return
         BaseTouchUIController.handle_action(self, action)
 
     def _handle_home(self, action: str) -> None:
@@ -78,7 +110,81 @@ class DeviceTouchUIController(BaseTouchUIController):
             self._stop_transport()
             self.state = self.state.next_revision(error="REC NOT IMPLEMENTED")
             return
+        if action == "new":
+            self.active_save_path = None
         BaseTouchUIController._handle_home(self, action)
+
+    def _handle_search(self, action: str) -> None:
+        if action == "saves":
+            self._refresh_saves()
+            self.screen = SAVES_SCREEN
+            return
+        BaseTouchUIController._handle_search(self, action)
+
+    def _open_file(self, index: int) -> None:
+        self.active_save_path = None
+        BaseTouchUIController._open_file(self, index)
+
+    def _refresh_saves(self) -> None:
+        root = self.selected_storage_path
+        if root is None and self.directory_browser is not None:
+            root = self.directory_browser.current
+        entries = list_save_entries(root) if root is not None else ()
+        self.save_files = tuple(entry.name for entry in entries)
+        self.save_file_paths = tuple(entry.path for entry in entries)
+        if self.save_files:
+            self.save_selected = min(self.save_selected, len(self.save_files) - 1)
+        else:
+            self.save_selected = 0
+        self.save_offset = min(
+            self.save_offset,
+            max(0, len(self.save_files) - self.visible_save_count),
+        )
+
+    def _handle_saves(self, action: str) -> None:
+        if action == "back":
+            self.screen = Screen.SEARCH
+            return
+        if action == "saves-refresh":
+            self._refresh_saves()
+            return
+        if action == "save-up":
+            self.save_selected = max(0, self.save_selected - 1)
+            self._ensure_save_visible()
+            return
+        if action == "save-down":
+            if self.save_files:
+                self.save_selected = min(
+                    len(self.save_files) - 1,
+                    self.save_selected + 1,
+                )
+                self._ensure_save_visible()
+            return
+        if not action.startswith("open-save:"):
+            return
+        try:
+            index = int(action.split(":", 1)[1])
+            name = self.save_files[index]
+            path = Path(self.save_file_paths[index])
+        except (ValueError, IndexError):
+            return
+        self.save_selected = index
+        self._ensure_save_visible()
+        self.active_save_path = path
+        self.state = self.state.next_revision(
+            tape_name=name,
+            transport=self.state.transport.STOPPED,
+            position_seconds=0.0,
+            duration_seconds=None,
+            error=None,
+        )
+        self.screen = Screen.HOME
+
+    def _ensure_save_visible(self) -> None:
+        if self.save_selected < self.save_offset:
+            self.save_offset = self.save_selected
+        elif self.save_selected >= self.save_offset + self.visible_save_count:
+            self.save_offset = self.save_selected - self.visible_save_count + 1
 
     def _handle_settings(self, action: str) -> None:
         if action == "output-level":
