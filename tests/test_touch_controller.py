@@ -55,6 +55,23 @@ class TouchUIControllerTests(unittest.TestCase):
         self.assertEqual(Screen.HOME, controller.screen)
         self.assertEqual("GAME 6.TZX", controller.state.tape_name)
 
+    def test_file_buttons_scroll_by_visible_page(self) -> None:
+        files = tuple(f"GAME {index:02d}.TZX" for index in range(20))
+        controller = TouchUIController(files)
+        controller.handle_action("files")
+
+        controller.handle_action("down")
+        self.assertEqual(6, controller.selected_file)
+        self.assertEqual(6, controller.file_offset)
+
+        controller.handle_action("down")
+        self.assertEqual(12, controller.selected_file)
+        self.assertEqual(12, controller.file_offset)
+
+        controller.handle_action("up")
+        self.assertEqual(6, controller.selected_file)
+        self.assertEqual(6, controller.file_offset)
+
     def test_file_group_jump_skips_whole_letter_group(self) -> None:
         controller = TouchUIController(
             ("1942.TAP", "ALPHA.TAP", "ARCADE.TAP", "BETA.TZX", "BRAVO.TAP", "ZED.TAP")
@@ -112,7 +129,9 @@ class TouchUIControllerTests(unittest.TestCase):
         controller = TouchUIController(FILES, output_level=25, previous_output_level=25)
         controller.handle_action("settings")
         controller.handle_action("settings-down")
-        self.assertEqual(1, controller.settings_offset)
+        self.assertEqual(4, controller.settings_offset)
+        controller.handle_action("settings-up")
+        self.assertEqual(0, controller.settings_offset)
         controller.handle_action("output-level")
         self.assertEqual(Screen.OUTPUT_LEVEL, controller.screen)
         controller.handle_action("volume-up")
@@ -183,7 +202,6 @@ class TouchUIControllerTests(unittest.TestCase):
 
             controller.handle_action("settings")
             controller.handle_action("directories")
-            controller.handle_action("directory:0")
             controller.handle_action("use-directory")
 
             self.assertEqual(Screen.SETTINGS, controller.screen)
