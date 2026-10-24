@@ -32,6 +32,7 @@ DEFAULT_FONT = ROOT / "assets" / "fonts" / "bescii.ttf"
 DEFAULT_STORAGE_STATE = Path("~/.local/state/zxdeck/storage-path").expanduser()
 DEFAULT_AUDIO_STATE = Path("~/.local/state/zxdeck/audio.json").expanduser()
 DEFAULT_CALIBRATION_STATE = Path("~/.local/state/zxdeck/touch-calibration.json").expanduser()
+HOME_PROGRESS_RECT = (10, 78, 230, 120)
 
 MOCK_FILES = ("MANIC MINER.TZX", "JET SET WILLY.TAP", "ELITE.TZX", "DIZZY 3.TZX", "HEAD OVER HEELS.TZX", "SABOTEUR.TAP", "R-TYPE.TZX")
 
@@ -74,6 +75,13 @@ def send_tape_title(display: ILI9341, title_pixels: bytes) -> None:
     left, top, right, bottom = TAPE_TITLE_RECT
     display.set_window(left, top, right - 1, bottom - 1)
     display.write_rgb565(title_pixels)
+
+
+def send_region(display: ILI9341, image, rect: tuple[int, int, int, int]) -> None:
+    """Send only one rectangular UI region instead of repainting the full TFT."""
+    left, top, right, bottom = rect
+    display.set_window(left, top, right - 1, bottom - 1)
+    display.write_rgb565(image_to_rgb565(image.crop(rect)))
 
 
 def send_pressed_feedback(display: ILI9341, rendered, action: str) -> None:
@@ -119,6 +127,7 @@ def main() -> int:
         file_paths=tape_paths or None,
         state=DeckState(transport=TransportState.STOPPED, error=None if tape_names else "NO TAPE FILES"),
         directory_browser=DirectoryBrowser(storage_config.browse_root, selected_storage_path if selected_storage_path.is_dir() else storage_config.browse_root),
+        selected_storage_path=selected_storage_path,
         playback_devices=list_audio_devices("playback"),
         capture_devices=list_audio_devices("capture"),
         selected_playback_device=audio_selection.playback_device,
@@ -156,6 +165,21 @@ def main() -> int:
         rendered = controller.render(renderer, cursor_visible=cursor_visible)
         send_frame(display, rendered)
         previous_screen = controller.screen
+
+    def redraw_home_progress() -> None:
+        """Refresh only progress/time pixels so title scrolling is not stalled."""
+        nonlocal rendered
+        if controller.screen is not Screen.HOME:
+            return
+        fresh = controller.render(renderer, cursor_visible=cursor_visible)
+        send_region(display, fresh.image, HOME_PROGRESS_RECT)
+        if rendered is None:
+            rendered = fresh
+        else:
+            rendered.image.paste(
+                fresh.image.crop(HOME_PROGRESS_RECT),
+                HOME_PROGRESS_RECT[:2],
+            )
 
     def wait_for_release() -> None:
         while running and touch.pressed:
@@ -311,7 +335,6 @@ def main() -> int:
         redraw()
         print("ZX Deck interactive UI prototype ready. Press Ctrl+C to stop.", flush=True)
         while running:
-            now = time.monotonic()
             playback_event = player.poll()
             if playback_event is not None:
                 if playback_event.kind in {"started", "progress"}:
@@ -319,7 +342,11 @@ def main() -> int:
                 elif playback_event.kind in {"finished", "stopped", "error"}:
                     controller.state = controller.state.next_revision(transport=TransportState.STOPPED, position_seconds=playback_event.position_seconds if playback_event.position_seconds is not None else controller.state.position_seconds, duration_seconds=playback_event.duration_seconds if playback_event.duration_seconds is not None else controller.state.duration_seconds, error=playback_event.message[:28].upper() if playback_event.kind == "error" else None)
                 if controller.screen is Screen.HOME:
-                    redraw()
+                    if playback_event.kind == "progress":
+                        redraw_home_progress()
+                    else:
+                        redraw()
+            now = time.monotonic()
             if controller.screen is Screen.HOME and now >= title_refresh_at:
                 current_title = controller.state.tape_name or "NO TAPE"
                 maximum_offset = max(0, renderer.tape_title_width(current_title) - (TAPE_TITLE_RECT[2] - TAPE_TITLE_RECT[0]))
