@@ -10,6 +10,8 @@ from pathlib import Path
 
 from zxdeck.config import StorageConfig
 
+from .saves import SAVES_DIRECTORY_NAME
+
 
 class StorageUnavailable(RuntimeError):
     pass
@@ -54,11 +56,7 @@ class TapeLibrary:
         extensions = frozenset(self.config.extensions)
         paths: Iterable[Path]
         if self.config.recursive:
-            paths = (
-                Path(directory) / filename
-                for directory, _subdirectories, filenames in os.walk(root)
-                for filename in filenames
-            )
+            paths = self._walk_main_library(root)
         else:
             paths = (
                 Path(item.path)
@@ -75,6 +73,20 @@ class TapeLibrary:
             sorted(entries, key=lambda entry: (entry.name.casefold(), str(entry.path)))
         )
         return self._entries
+
+    @staticmethod
+    def _walk_main_library(root: Path) -> Iterable[Path]:
+        """Walk the tape tree while pruning the dedicated top-level saves folder."""
+        for directory, subdirectories, filenames in os.walk(root):
+            directory_path = Path(directory)
+            if directory_path == root:
+                subdirectories[:] = [
+                    name
+                    for name in subdirectories
+                    if name.casefold() != SAVES_DIRECTORY_NAME.casefold()
+                ]
+            for filename in filenames:
+                yield directory_path / filename
 
     def search(self, query: str) -> tuple[TapeEntry, ...]:
         needle = query.casefold().strip()
