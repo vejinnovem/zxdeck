@@ -6,9 +6,9 @@ operating-system status and controls used on the Raspberry Pi appliance.
 
 from .controller import TouchUIController as BaseTouchUIController
 from .device_controller import DeviceTouchUIController
-from .device_renderer import DeviceTouchRenderer
 from .keypad import InputMode, MultiTapEditor
 from .renderer import Screen, TouchRenderer
+from .runtime_renderer import DeviceTouchRenderer
 
 TouchUIController = DeviceTouchUIController
 
