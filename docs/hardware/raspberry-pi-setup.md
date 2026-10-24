@@ -151,6 +151,29 @@ systemd discard its start job from the boot transaction). A missing or disabled
 splash is deliberately ignored by `ExecStartPre`. The splash is ordered before
 `basic.target`.
 
+### Optional boot optimization
+
+For a Raspberry Pi dedicated to ZX Deck, run:
+
+```bash
+sudo .venv/bin/python tools/optimize_boot.py
+sudo reboot
+```
+
+The tool installs `/etc/cloud/cloud-init.disabled`, selects pure compressed
+zram through `/etc/rpi/swap.conf.d/90-zxdeck.conf`, and disables Bluetooth plus
+`NetworkManager-wait-online.service`. It deliberately retains NetworkManager,
+Wi-Fi, SSH, Avahi/mDNS and all display/audio services. On the reference Pi Zero
+W this moved the early splash from approximately 60 to 45 seconds and the UI
+from approximately 99 to 70 seconds. Wi-Fi can become available after the UI.
+
+The operation is reversible:
+
+```bash
+sudo .venv/bin/python tools/optimize_boot.py --restore
+sudo reboot
+```
+
 This cannot eliminate the very first white interval after power-on: the TFT
 backlight is powered before Linux is able to initialize and drive the display.
 The purpose of the early splash is to make that interval as short as practical

@@ -217,6 +217,22 @@ narrow: it permits the ZX Deck user to request only a non-blocking restart of
 `zxdeck.service` after an approved update. Git fetch/merge operations remain
 unprivileged.
 
+On a Raspberry Pi dedicated to ZX Deck, the following optional step applies the
+boot configuration verified on the reference Pi Zero W:
+
+```bash
+sudo .venv/bin/python tools/optimize_boot.py
+```
+
+It disables completed cloud-init provisioning, unused Bluetooth and waiting for
+the network before boot may continue. It also keeps compressed zram swap but
+removes its SD-backed writeback file, avoiding repeated preparation of that file
+during startup. NetworkManager, Wi-Fi, SSH, mDNS, GPIO, SPI and audio remain
+enabled. The touchscreen may become ready before Wi-Fi reconnects.
+
+To restore the Raspberry Pi OS defaults, run
+`sudo .venv/bin/python tools/optimize_boot.py --restore` and reboot.
+
 Reboot once:
 
 ```bash
