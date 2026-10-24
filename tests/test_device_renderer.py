@@ -25,6 +25,15 @@ class DeviceTouchRendererTests(unittest.TestCase):
         self.assertEqual("output-level", connected.action_at(120, 230))
         self.assertEqual("power", connected_last_page.action_at(120, 230))
 
+    def test_settings_third_page_exposes_manual_library_rescan(self) -> None:
+        renderer = DeviceTouchRenderer(address_provider=lambda: "192.168.1.84")
+        page = renderer.render_settings(offset=8)
+
+        self.assertEqual("rescan-library", page.action_at(120, 55))
+        self.assertEqual("back", page.action_at(40, 295))
+        self.assertEqual("settings-up", page.action_at(120, 295))
+        self.assertEqual("settings-down", page.action_at(200, 295))
+
     def test_home_exposes_previous_play_next_stop_and_record(self) -> None:
         renderer = DeviceTouchRenderer()
         screen = renderer.render_home(
