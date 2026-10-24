@@ -21,7 +21,9 @@ class DeckState:
     position_seconds: float = 0.0
     duration_seconds: float | None = None
     error: str | None = None
+    segment_label: str | None = None
+    segment_index: int = 0
+    segment_count: int = 0
 
     def next_revision(self, **changes: object) -> "DeckState":
         return replace(self, revision=self.revision + 1, **changes)
-
