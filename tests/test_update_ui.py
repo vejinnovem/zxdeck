@@ -11,11 +11,11 @@ from zxdeck.frontends.touch import DeviceTouchRenderer, Screen, TouchUIControlle
 
 
 class UpdateNavigationTests(unittest.TestCase):
-    def test_updates_is_a_sixth_scrollable_settings_entry(self) -> None:
+    def test_updates_remains_available_in_extended_settings(self) -> None:
         controller = TouchUIController(())
         controller.handle_action("settings")
         self.assertEqual(Screen.SETTINGS, controller.screen)
-        self.assertEqual(6, controller.settings_entry_count)
+        self.assertEqual(8, controller.settings_entry_count)
         controller.handle_action("updates")
         self.assertEqual("updates", controller.screen)
         controller.handle_action("back")
@@ -24,14 +24,14 @@ class UpdateNavigationTests(unittest.TestCase):
 
 @unittest.skipIf(ImageChops is None, "Pillow is not installed")
 class UpdateRendererTests(unittest.TestCase):
-    def test_second_settings_page_exposes_updates_and_power(self) -> None:
+    def test_last_settings_page_exposes_updates_and_power(self) -> None:
         renderer = DeviceTouchRenderer(address_provider=lambda: "192.168.1.84")
-        second_page = renderer.render_settings(offset=2)
-        self.assertEqual("updates", second_page.action_at(120, 165))
-        self.assertEqual("power", second_page.action_at(120, 220))
-        self.assertEqual("back", second_page.action_at(40, 295))
-        self.assertEqual("settings-up", second_page.action_at(120, 295))
-        self.assertEqual("settings-down", second_page.action_at(200, 295))
+        last_page = renderer.render_settings(offset=4)
+        self.assertEqual("updates", last_page.action_at(120, 165))
+        self.assertEqual("power", last_page.action_at(120, 220))
+        self.assertEqual("back", last_page.action_at(40, 295))
+        self.assertEqual("settings-up", last_page.action_at(120, 295))
+        self.assertEqual("settings-down", last_page.action_at(200, 295))
 
     def test_update_button_is_only_active_when_fast_forward_is_available(self) -> None:
         renderer = DeviceTouchRenderer()

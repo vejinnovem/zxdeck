@@ -16,7 +16,7 @@ class DeviceTouchRendererTests(unittest.TestCase):
         disconnected = DeviceTouchRenderer(address_provider=lambda: None).render_settings()
         connected_renderer = DeviceTouchRenderer(address_provider=lambda: "192.168.1.84")
         connected = connected_renderer.render_settings()
-        connected_last_page = connected_renderer.render_settings(offset=2)
+        connected_last_page = connected_renderer.render_settings(offset=4)
         self.assertIsNotNone(ImageChops.difference(disconnected.image, connected.image).getbbox())
         self.assertEqual("playback-device", connected.action_at(120, 110))
         self.assertEqual("capture-device", connected.action_at(120, 165))
