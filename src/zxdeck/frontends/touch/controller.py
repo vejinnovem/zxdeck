@@ -80,14 +80,22 @@ class TouchUIController:
         return renderer.render_power(requested=self.shutdown_requested)
 
     @property
-    def filtered_files(self) -> tuple[str, ...]:
-        return tuple(self.files[index] for index in self.filtered_file_indices)
-
-    @property
-    def filtered_file_indices(self) -> tuple[int, ...]:
+    def filtered_files(self) -> Sequence[str]:
         needle = self.search_query.casefold().strip()
         if not needle:
-            return tuple(range(len(self.files)))
+            # Normal browsing is by far the hottest path on the Pi Zero.  Do
+            # not rebuild a tuple containing the whole library for every
+            # redraw; the renderer only slices the six visible rows anyway.
+            return self.files
+        return tuple(name for name in self.files if needle in name.casefold())
+
+    @property
+    def filtered_file_indices(self) -> Sequence[int]:
+        needle = self.search_query.casefold().strip()
+        if not needle:
+            # range is constant-size regardless of the size of the library and
+            # still provides the indexing semantics used by selected_tape_path.
+            return range(len(self.files))
         return tuple(index for index, name in enumerate(self.files) if needle in name.casefold())
 
     @property
