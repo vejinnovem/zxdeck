@@ -95,12 +95,25 @@ class DeviceTouchRenderer(BaseDeviceTouchRenderer):
             segment_left = max(left, x)
             segment_right = min(right, x + stripe_width)
             if segment_right > segment_left:
-                palette = bright if segment_left < elapsed_right else dim
-                colour = palette[stripe_index % 2]
-                draw.rectangle(
-                    (segment_left, top, segment_right - 1, bottom - 1),
-                    fill=colour,
-                )
+                colour_index = stripe_index % 2
+
+                # A stripe can straddle the playhead.  Draw its elapsed and
+                # remaining pieces separately so no bright pixels protrude
+                # into the unplayed side merely because the stripe started on
+                # the left of the progress boundary.
+                bright_right = min(segment_right, elapsed_right)
+                if bright_right > segment_left:
+                    draw.rectangle(
+                        (segment_left, top, bright_right - 1, bottom - 1),
+                        fill=bright[colour_index],
+                    )
+
+                dim_left = max(segment_left, elapsed_right)
+                if segment_right > dim_left:
+                    draw.rectangle(
+                        (dim_left, top, segment_right - 1, bottom - 1),
+                        fill=dim[colour_index],
+                    )
             x += stripe_width
             stripe_index += 1
 
