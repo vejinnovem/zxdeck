@@ -7,6 +7,7 @@ try:
 except ImportError:
     ImageChops = None
 
+from zxdeck.core.state import DeckState
 from zxdeck.frontends.touch import DeviceTouchRenderer
 
 
@@ -22,6 +23,23 @@ class DeviceTouchRendererTests(unittest.TestCase):
         self.assertEqual("capture-device", connected.action_at(120, 165))
         self.assertEqual("output-level", connected.action_at(120, 230))
         self.assertEqual("power", connected_last_page.action_at(120, 230))
+
+    def test_home_exposes_previous_play_next_stop_and_record(self) -> None:
+        renderer = DeviceTouchRenderer()
+        screen = renderer.render_home(
+            DeckState(
+                tape_name="RING.TZX",
+                segment_label="PROGRAM RING",
+                segment_index=1,
+                segment_count=4,
+            )
+        )
+
+        self.assertEqual("rewind", screen.action_at(45, 150))
+        self.assertEqual("play", screen.action_at(120, 150))
+        self.assertEqual("forward", screen.action_at(195, 150))
+        self.assertEqual("stop", screen.action_at(64, 205))
+        self.assertEqual("record", screen.action_at(176, 205))
 
 
 if __name__ == "__main__":
