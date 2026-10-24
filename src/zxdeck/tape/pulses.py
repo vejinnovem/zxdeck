@@ -39,13 +39,18 @@ class Pause:
 
 
 @dataclass(frozen=True, slots=True)
+class TapeStop:
+    """A TZX stop-the-tape marker with no signal duration."""
+
+
+@dataclass(frozen=True, slots=True)
 class DirectRecording:
     tstates_per_sample: int
     data: bytes
     used_bits_last_byte: int
 
 
-TapeEvent = Pulse | PulseRun | EncodedData | Pause | DirectRecording
+TapeEvent = Pulse | PulseRun | EncodedData | Pause | TapeStop | DirectRecording
 
 
 def iter_tape_events(path: str | Path) -> Iterator[TapeEvent]:
@@ -135,8 +140,9 @@ def _iter_tzx(data: bytes) -> Iterator[TapeEvent]:
         elif block_id == 0x20:
             pause_ms, position = _number(data, position, 2)
             if pause_ms == 0:
-                raise TapeDecodeError("TZX requests a manual tape stop")
-            yield Pause(pause_ms)
+                yield TapeStop()
+            else:
+                yield Pause(pause_ms)
         elif block_id == 0x30:
             length, position = _number(data, position, 1)
             _, position = _take(data, position, length)
