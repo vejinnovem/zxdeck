@@ -89,11 +89,14 @@ def write_pcm(
 ) -> int:
     """Write PCM incrementally and return its total sample count.
 
-    ``phase_progress`` mirrors the ordinary progress callback but also reports
-    the logical signal being generated. Pulse/pulse-run sections are reported
-    as ``pilot`` (including the very short sync pulses), encoded/direct data as
-    ``data`` and silence blocks as ``pause``. This is intended for UI feedback;
-    audio generation itself is unchanged.
+    ``phase_progress`` reports both regular flushed progress and exact logical
+    signal boundaries. Pulse/pulse-run sections are ``pilot`` (including sync
+    pulses), encoded/direct data are ``data`` and silence blocks are ``pause``.
+
+    A phase transition first flushes any samples belonging to the previous
+    phase, then reports the new phase at the exact sample offset where it
+    begins. This keeps UI pilot/data stripes from lagging by up to one complete
+    PCM chunk or attributing a mixed chunk to the wrong phase.
     """
     if sample_rate <= 0:
         raise ValueError("sample rate must be positive")
@@ -106,7 +109,7 @@ def write_pcm(
     total = 0
     low_value = 32
     high_value = 224
-    current_phase = "pilot"
+    current_phase: str | None = None
 
     def refresh_signal_levels() -> None:
         nonlocal low_value, high_value
@@ -129,9 +132,22 @@ def write_pcm(
         buffer.clear()
         if progress is not None:
             progress(total)
-        if phase_progress is not None:
+        if phase_progress is not None and current_phase is not None:
             phase_progress(total, current_phase)
         refresh_signal_levels()
+
+    def set_phase(phase: str) -> None:
+        nonlocal current_phase
+        if phase == current_phase:
+            return
+        # Never let a buffer span two logical phases. Otherwise the callback
+        # only discovers the new phase after enough new samples arrive to fill
+        # the chunk, which can delay a UI transition by one full chunk.
+        if current_phase is not None:
+            flush()
+        current_phase = phase
+        if phase_progress is not None:
+            phase_progress(total, current_phase)
 
     def append_constant(value: int, count: int) -> None:
         nonlocal total
@@ -162,7 +178,7 @@ def write_pcm(
         if cancelled():
             break
         if isinstance(event, (Pulse, PulseRun)):
-            current_phase = "pilot"
+            set_phase("pilot")
             count = event.count if isinstance(event, PulseRun) else 1
             for pulse_index in range(count):
                 if pulse_index % 256 == 0 and cancelled():
@@ -170,7 +186,7 @@ def write_pcm(
                 append_signal(level, samples_for_tstates(event.tstates))
                 level = not level
         elif isinstance(event, EncodedData):
-            current_phase = "data"
+            set_phase("data")
             if not 1 <= event.used_bits_last_byte <= 8:
                 raise ValueError("invalid encoded-data used-bit count")
             for byte_index, value in enumerate(event.data):
@@ -191,12 +207,12 @@ def write_pcm(
                         append_signal(level, samples_for_tstates(duration))
                         level = not level
         elif isinstance(event, Pause):
-            current_phase = "pause"
+            set_phase("pause")
             fraction = 0
             append_constant(128, round(event.milliseconds * sample_rate / 1000))
             level = False
         elif isinstance(event, DirectRecording):
-            current_phase = "data"
+            set_phase("data")
             if not 1 <= event.used_bits_last_byte <= 8:
                 raise ValueError("invalid direct-recording used-bit count")
             for byte_index, value in enumerate(event.data):

@@ -104,6 +104,26 @@ class TapePulseTests(unittest.TestCase):
         self.assertEqual(bytes((224,)) * 50, output.getvalue()[50:100])
         self.assertEqual(bytes((128,)) * 10, output.getvalue()[100:])
 
+    def test_phase_progress_reports_exact_boundary_before_new_phase_chunk_fills(self) -> None:
+        output = BytesIO()
+        reported: list[tuple[int, str]] = []
+        count = write_pcm(
+            [
+                Pulse(1_750_000),
+                EncodedData(b"\x00", 175_000, 175_000),
+            ],
+            output,
+            sample_rate=100,
+            chunk_size=10_000,
+            phase_progress=lambda samples, phase: reported.append((samples, phase)),
+        )
+
+        self.assertEqual(130, count)
+        data_reports = [samples for samples, phase in reported if phase == "data"]
+        self.assertTrue(data_reports)
+        self.assertEqual(50, data_reports[0])
+        self.assertIn((50, "pilot"), reported)
+
     def test_pcm_generation_can_be_cancelled_inside_a_long_run(self) -> None:
         output = BytesIO()
         checks = 0
