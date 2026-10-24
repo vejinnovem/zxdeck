@@ -30,8 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wait-seconds",
         type=float,
-        default=3.0,
-        help="maximum time to wait for SPI/GPIO device nodes during early boot",
+        default=20.0,
+        help="maximum time to wait until SPI/GPIO devices are usable during early boot",
     )
     parser.add_argument(
         "--hold",
@@ -59,14 +59,23 @@ def wait_for_devices(config, timeout: float) -> None:
         Path("/dev/gpiochip0"),
     )
     deadline = time.monotonic() + max(0.0, timeout)
-    while time.monotonic() < deadline:
-        missing = [path for path in required if not path.exists()]
-        if not missing:
+    unavailable: dict[Path, str] = {}
+    while True:
+        unavailable.clear()
+        for path in required:
+            try:
+                descriptor = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+            except OSError as error:
+                unavailable[path] = str(error)
+            else:
+                os.close(descriptor)
+        if not unavailable:
             return
+        if time.monotonic() >= deadline:
+            break
         time.sleep(0.05)
-    missing = [str(path) for path in required if not path.exists()]
-    if missing:
-        raise SystemExit("boot splash hardware did not appear: " + ", ".join(missing))
+    details = ", ".join(f"{path}: {error}" for path, error in unavailable.items())
+    raise SystemExit("boot splash hardware is not usable: " + details)
 
 
 def main() -> int:

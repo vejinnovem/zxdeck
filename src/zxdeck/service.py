@@ -43,7 +43,7 @@ def render_systemd_splash_unit(root: Path, user: str) -> str:
 Description=ZX Deck early boot splash
 DefaultDependencies=no
 RequiresMountsFor={root}
-After=systemd-udev-trigger.service
+After=systemd-udev-trigger.service systemd-udevd.service
 Before=basic.target
 
 [Service]
@@ -55,7 +55,7 @@ SupplementaryGroups=spi gpio
 WorkingDirectory={root}
 Environment=PYTHONPATH={root / 'src'}
 ExecStart={python} {tool} --config {hardware} --hold
-TimeoutStartSec=12
+TimeoutStartSec=35
 TimeoutStopSec=2
 
 [Install]
