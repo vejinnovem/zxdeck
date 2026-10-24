@@ -17,10 +17,13 @@ from .keypad import InputMode, MultiTapEditor
 from .renderer import (
     BLACK,
     CYAN,
+    DARK,
     DIM,
     RED,
     WHITE,
+    YELLOW,
     HitTarget,
+    RenderedScreen,
     Screen,
     TouchRenderer,
 )
@@ -37,6 +40,47 @@ class DeviceTouchRenderer(RuntimeDeviceTouchRenderer):
         self._settings_render_active = False
 
     def render_settings(self, *args, **kwargs):
+        offset = max(0, int(kwargs.get("offset", 0)))
+        if offset >= 8:
+            image, draw = self._new_canvas()
+            targets: list[HitTarget] = []
+            self._header(draw, "SETTINGS", "LIBRARY")
+
+            rescan_rect = (8, 34, 232, 83)
+            draw.rectangle(rescan_rect, fill=DARK, outline=CYAN)
+            self._center_text_in_rect(
+                draw,
+                "RESCAN LIBRARY",
+                rescan_rect,
+                size=10,
+            )
+            self._center_text(
+                draw,
+                "REBUILD FILE INDEX",
+                106,
+                size=7,
+                fill=DIM,
+            )
+            targets.append(HitTarget("rescan-library", rescan_rect))
+
+            address = kwargs.get("ip_address") or self._network_address()
+            self._center_text(draw, f"IP {address}", 257, size=7, fill=CYAN)
+
+            back_rect = (0, 276, 80, 320)
+            up_rect = (80, 276, 160, 320)
+            down_rect = (160, 276, 240, 320)
+            self._button(draw, back_rect, "BACK", accent=CYAN, squared=True)
+            self._button(draw, up_rect, "UP", accent=YELLOW, squared=True)
+            self._button(draw, down_rect, "DOWN", accent=YELLOW, squared=True)
+            targets.extend(
+                (
+                    HitTarget("back", back_rect),
+                    HitTarget("settings-up", up_rect),
+                    HitTarget("settings-down", down_rect),
+                )
+            )
+            return RenderedScreen(image, tuple(targets))
+
         self._settings_render_active = True
         try:
             return super().render_settings(*args, **kwargs)
@@ -188,9 +232,10 @@ class TouchUIController(DeviceTouchUIController):
         if action in {"settings-up", "settings-down"}:
             direction = -1 if action == "settings-up" else 1
             step = self.visible_settings_count
-            maximum_offset = max(
-                0,
-                self.settings_entry_count - self.visible_settings_count,
+            maximum_offset = (
+                ((self.settings_entry_count - 1) // step) * step
+                if self.settings_entry_count > 0
+                else 0
             )
             self.settings_offset = min(
                 maximum_offset,
