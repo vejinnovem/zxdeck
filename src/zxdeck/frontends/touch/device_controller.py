@@ -55,7 +55,14 @@ class DeviceTouchUIController(BaseTouchUIController):
                 self.pending_wifi_ssid,
                 cursor_visible=cursor_visible,
             )
-        return super().render(renderer, cursor_visible=cursor_visible)
+        # dataclass(slots=True) returns a replacement class object. Using
+        # zero-argument super() in that replacement can retain the original
+        # class in the __class__ closure and raise TypeError at runtime.
+        return BaseTouchUIController.render(
+            self,
+            renderer,
+            cursor_visible=cursor_visible,
+        )
 
     def handle_action(self, action: str) -> None:
         if self.screen == WIFI_NETWORKS_SCREEN:
@@ -64,12 +71,12 @@ class DeviceTouchUIController(BaseTouchUIController):
         if self.screen == WIFI_PASSWORD_SCREEN:
             self._handle_wifi_password(action)
             return
-        super().handle_action(action)
+        BaseTouchUIController.handle_action(self, action)
 
     def _handle_settings(self, action: str) -> None:
         if action == "output-level":
             self.output_level_mode = "tape"
-            super()._handle_settings(action)
+            BaseTouchUIController._handle_settings(self, action)
         elif action == "hardware-output":
             self.output_level_mode = "hardware"
             state = hardware_output_state(self.selected_playback_device)
@@ -80,11 +87,11 @@ class DeviceTouchUIController(BaseTouchUIController):
             self._refresh_wifi(rescan=True)
             self.screen = WIFI_NETWORKS_SCREEN
         else:
-            super()._handle_settings(action)
+            BaseTouchUIController._handle_settings(self, action)
 
     def _handle_output_level(self, action: str) -> None:
         if self.output_level_mode != "hardware":
-            super()._handle_output_level(action)
+            BaseTouchUIController._handle_output_level(self, action)
             return
         if action == "back":
             self.screen = Screen.SETTINGS
