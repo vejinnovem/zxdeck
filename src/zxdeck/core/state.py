@@ -24,6 +24,7 @@ class DeckState:
     segment_label: str | None = None
     segment_index: int = 0
     segment_count: int = 0
+    segment_starts: tuple[float, ...] = ()
 
     def next_revision(self, **changes: object) -> "DeckState":
         return replace(self, revision=self.revision + 1, **changes)
