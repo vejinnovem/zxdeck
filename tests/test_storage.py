@@ -39,7 +39,8 @@ class TapeLibraryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / ".zxdeck-index.json").write_text(
-                '{"version": 1, "paths": ["../outside.tap"]}', encoding="utf-8"
+                '{"version":2,"entries":[["outside.tap","../outside.tap"]]}',
+                encoding="utf-8",
             )
             tape = root / "Safe.tap"
             tape.touch()
@@ -47,6 +48,21 @@ class TapeLibraryTests(unittest.TestCase):
             entries = TapeLibrary(StorageConfig(path=root)).refresh()
 
             self.assertEqual((tape,), tuple(entry.path for entry in entries))
+
+    def test_scan_reports_progress_and_persists_index(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Alpha.tap").touch()
+            progress: list[tuple[str, int]] = []
+
+            entries = TapeLibrary(StorageConfig(path=root)).refresh(
+                lambda status, count: progress.append((status, count))
+            )
+
+            self.assertEqual(("Alpha.tap",), tuple(entry.name for entry in entries))
+            self.assertEqual(("LOADING INDEX", 0), progress[0])
+            self.assertEqual(("INDEX READY", 1), progress[-1])
+            self.assertTrue((root / ".zxdeck-index.json").is_file())
 
     def test_scan_search_and_virtual_initial_groups(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

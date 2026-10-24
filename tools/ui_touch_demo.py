@@ -51,10 +51,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_tape_entries(config):
+def load_tape_entries(config, progress=None):
     library = TapeLibrary(config)
     try:
-        return library.refresh()
+        return library.refresh(progress=progress)
     except StorageUnavailable as exc:
         print(f"Tape library unavailable ({exc}).", flush=True)
         return ()
@@ -116,7 +116,21 @@ def main() -> int:
     renderer = DeviceTouchRenderer(font_path=args.font if args.font.exists() else None)
     display = ILI9341(config.display)
     touch = XPT2046(config.touch)
-    tape_entries = load_tape_entries(storage_config)
+    display.initialize()
+    if not args.no_splash:
+        send_image(display, render_splash(config.display.width, config.display.height))
+
+    progress_updated_at = float("-inf")
+
+    def show_index_progress(status: str, count: int) -> None:
+        nonlocal progress_updated_at
+        now = time.monotonic()
+        if count and status != "INDEX READY" and now - progress_updated_at < 0.5:
+            return
+        send_frame(display, renderer.render_indexing(status, count))
+        progress_updated_at = now
+
+    tape_entries = load_tape_entries(storage_config, show_index_progress)
     tape_names = tuple(entry.name for entry in tape_entries)
     tape_paths = tuple(entry.path for entry in tape_entries)
     if not tape_names and args.mock_files:
@@ -293,7 +307,7 @@ def main() -> int:
         if controller.selected_storage_path is not None and controller.selected_storage_path != previous_storage_path:
             save_selected_path(args.storage_state, controller.selected_storage_path)
             selected_config = replace(app_config.storage, path=controller.selected_storage_path)
-            tape_entries = load_tape_entries(selected_config)
+            tape_entries = load_tape_entries(selected_config, show_index_progress)
             controller.files = tuple(entry.name for entry in tape_entries)
             controller.file_paths = tuple(entry.path for entry in tape_entries)
             controller.search_query = ""
@@ -347,9 +361,6 @@ def main() -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
-        display.initialize()
-        if not args.no_splash:
-            send_image(display, render_splash(config.display.width, config.display.height)); time.sleep(0.8)
         redraw()
         print("ZX Deck interactive UI prototype ready. Press Ctrl+C to stop.", flush=True)
         while running:

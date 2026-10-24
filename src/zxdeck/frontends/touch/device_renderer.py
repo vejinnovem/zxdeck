@@ -73,6 +73,14 @@ class DeviceTouchRenderer(BaseTouchRenderer):
     def invalidate_hardware_output(self) -> None:
         self._hardware_checked_at = float("-inf")
 
+    def render_indexing(self, status: str, count: int) -> RenderedScreen:
+        image, draw = self._new_canvas()
+        self._header(draw, "TAPE LIBRARY", "INDEX")
+        self._center_text(draw, status.upper()[:24], 110, size=13, fill=CYAN)
+        self._center_text(draw, f"{max(0, count)} FILES", 156, size=18, fill=GREEN)
+        self._center_text(draw, "PLEASE WAIT", 212, size=9, fill=DIM)
+        return RenderedScreen(image, ())
+
     def render_settings(
         self,
         *,

@@ -19,13 +19,28 @@ class StorageUnavailable(RuntimeError):
 
 
 INDEX_FILENAME = ".zxdeck-index.json"
-INDEX_VERSION = 1
+INDEX_VERSION = 2
+ProgressCallback = Callable[[str, int], None]
 
 
 @dataclass(frozen=True, slots=True)
 class TapeEntry:
     name: str
-    path: Path
+    _path: Path | None
+    _root: Path | None = None
+    _relative_path: str | None = None
+
+    @classmethod
+    def indexed(cls, name: str, root: Path, relative_path: str) -> "TapeEntry":
+        return cls(name, None, root, relative_path)
+
+    @property
+    def path(self) -> Path:
+        if self._path is not None:
+            return self._path
+        if self._root is None or self._relative_path is None:
+            raise RuntimeError("indexed tape entry has no path")
+        return self._root / self._relative_path
 
     @property
     def initial(self) -> str:
@@ -50,7 +65,10 @@ class TapeLibrary:
     def entries(self) -> tuple[TapeEntry, ...]:
         return self._entries
 
-    def refresh(self) -> tuple[TapeEntry, ...]:
+    def refresh(
+        self,
+        progress: ProgressCallback | None = None,
+    ) -> tuple[TapeEntry, ...]:
         root = self.config.path
         mount_path = self.config.mount_path or root
         if self.config.require_mount and not self._mount_check(mount_path):
@@ -59,12 +77,18 @@ class TapeLibrary:
             raise StorageUnavailable(f"storage directory does not exist: {root}")
 
         extensions = frozenset(self.config.extensions)
+        if progress is not None:
+            progress("LOADING INDEX", 0)
         indexed = load_tape_index(root, extensions) if self.config.recursive else None
-        paths: Iterable[Path]
         if indexed is not None:
-            paths = indexed
-        elif self.config.recursive:
-            paths = self._walk_main_library(root)
+            self._entries = indexed
+            if progress is not None:
+                progress("INDEX READY", len(indexed))
+            return self._entries
+
+        paths: Iterable[Path]
+        if self.config.recursive:
+            paths = self._walk_main_library(root, progress)
         else:
             paths = (
                 Path(item.path)
@@ -80,11 +104,25 @@ class TapeLibrary:
         self._entries = tuple(
             sorted(entries, key=lambda entry: (entry.name.casefold(), str(entry.path)))
         )
+        if self.config.recursive:
+            try:
+                write_tape_index(
+                    root,
+                    (entry.path.relative_to(root) for entry in self._entries),
+                )
+            except OSError:
+                pass
+        if progress is not None:
+            progress("INDEX READY", len(self._entries))
         return self._entries
 
     @staticmethod
-    def _walk_main_library(root: Path) -> Iterable[Path]:
+    def _walk_main_library(
+        root: Path,
+        progress: ProgressCallback | None = None,
+    ) -> Iterable[Path]:
         """Walk the tape tree while pruning the dedicated top-level saves folder."""
+        count = 0
         for directory, subdirectories, filenames in os.walk(root):
             directory_path = Path(directory)
             if directory_path == root:
@@ -94,7 +132,12 @@ class TapeLibrary:
                     if name.casefold() != SAVES_DIRECTORY_NAME.casefold()
                 ]
             for filename in filenames:
+                count += 1
+                if progress is not None and count % 256 == 0:
+                    progress("INDEXING TAPES", count)
                 yield directory_path / filename
+        if progress is not None:
+            progress("INDEXING TAPES", count)
 
     def search(self, query: str) -> tuple[TapeEntry, ...]:
         needle = query.casefold().strip()
@@ -109,7 +152,10 @@ class TapeLibrary:
         return {initial: tuple(entries) for initial, entries in sorted(grouped.items())}
 
 
-def load_tape_index(root: Path, extensions: frozenset[str]) -> tuple[Path, ...] | None:
+def load_tape_index(
+    root: Path,
+    extensions: frozenset[str],
+) -> tuple[TapeEntry, ...] | None:
     """Load a generated relative-path index, or fall back to scanning."""
     index_path = root / INDEX_FILENAME
     try:
@@ -118,32 +164,47 @@ def load_tape_index(root: Path, extensions: frozenset[str]) -> tuple[Path, ...] 
         return None
     if not isinstance(payload, dict) or payload.get("version") != INDEX_VERSION:
         return None
-    relative_paths = payload.get("paths")
-    if not isinstance(relative_paths, list):
+    indexed_entries = payload.get("entries")
+    if not isinstance(indexed_entries, list):
         return None
 
-    paths: list[Path] = []
-    for value in relative_paths:
-        if not isinstance(value, str):
+    entries: list[TapeEntry] = []
+    for value in indexed_entries:
+        if (
+            not isinstance(value, list)
+            or len(value) != 2
+            or not all(isinstance(item, str) for item in value)
+        ):
             return None
-        relative = Path(value)
+        name, relative_value = value
+        relative = Path(relative_value)
         if relative.is_absolute() or not relative.parts or ".." in relative.parts:
             return None
         if relative.parts[0].casefold() == SAVES_DIRECTORY_NAME.casefold():
             return None
         if relative.suffix.casefold() not in extensions:
             return None
-        paths.append(root / relative)
-    return tuple(paths)
+        if name != relative.name:
+            return None
+        entries.append(TapeEntry.indexed(name, root, relative_value))
+    return tuple(entries)
 
 
 def write_tape_index(root: Path, relative_paths: Iterable[Path]) -> Path:
     """Atomically write a portable index for a prepared tape directory."""
-    paths = sorted(path.as_posix() for path in relative_paths)
+    paths = sorted(
+        relative_paths,
+        key=lambda path: (path.name.casefold(), path.as_posix()),
+    )
+    entries = [[path.name, path.as_posix()] for path in paths]
     target = root / INDEX_FILENAME
     temporary = target.with_name(target.name + ".tmp")
     temporary.write_text(
-        json.dumps({"version": INDEX_VERSION, "paths": paths}, ensure_ascii=False),
+        json.dumps(
+            {"version": INDEX_VERSION, "entries": entries},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
         encoding="utf-8",
     )
     temporary.replace(target)
