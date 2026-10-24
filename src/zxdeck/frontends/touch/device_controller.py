@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 from zxdeck.audio import hardware_output_state, set_hardware_output_level
+from zxdeck.core.state import TransportState
 from zxdeck.storage import list_save_entries
 from zxdeck.system import WifiNetwork, connect_wifi, scan_wifi_networks
 
@@ -40,9 +41,6 @@ class DeviceTouchUIController(BaseTouchUIController):
     active_save_path: Path | None = None
 
     def __post_init__(self) -> None:
-        # The main runtime does not currently pass the already-selected storage
-        # path into the controller, but DirectoryBrowser starts at that path.
-        # Capture it once so SAVES is not affected by later uncommitted browsing.
         if self.selected_storage_path is None and self.directory_browser is not None:
             self.selected_storage_path = self.directory_browser.current
 
@@ -84,9 +82,6 @@ class DeviceTouchUIController(BaseTouchUIController):
                 selected=self.save_selected,
                 offset=self.save_offset,
             )
-        # dataclass(slots=True) returns a replacement class object. Using
-        # zero-argument super() in that replacement can retain the original
-        # class in the __class__ closure and raise TypeError at runtime.
         return BaseTouchUIController.render(
             self,
             renderer,
@@ -173,7 +168,7 @@ class DeviceTouchUIController(BaseTouchUIController):
         self.active_save_path = path
         self.state = self.state.next_revision(
             tape_name=name,
-            transport=self.state.transport.STOPPED,
+            transport=TransportState.STOPPED,
             position_seconds=0.0,
             duration_seconds=None,
             error=None,
