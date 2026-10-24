@@ -29,7 +29,9 @@ class ServiceUnitTests(unittest.TestCase):
 
         self.assertIn("Description=ZX Deck early boot splash", unit)
         self.assertIn("DefaultDependencies=no", unit)
-        self.assertIn("After=local-fs.target", unit)
+        self.assertIn("RequiresMountsFor=/opt/zxdeck", unit)
+        self.assertIn("After=systemd-udev-trigger.service", unit)
+        self.assertNotIn("Requires=local-fs.target", unit)
         self.assertIn("Before=basic.target", unit)
         self.assertIn("Type=notify", unit)
         self.assertIn("NotifyAccess=main", unit)
@@ -37,6 +39,7 @@ class ServiceUnitTests(unittest.TestCase):
         self.assertIn("SupplementaryGroups=spi gpio", unit)
         self.assertIn("/opt/zxdeck/tools/boot_splash.py", unit)
         self.assertIn("--hold", unit)
+        self.assertIn("TimeoutStartSec=12", unit)
         self.assertIn("WantedBy=basic.target", unit)
 
 

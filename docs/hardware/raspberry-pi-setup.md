@@ -137,8 +137,10 @@ It writes and enables two services:
   LCD reset line active until the normal application replaces it;
 - `/etc/systemd/system/zxdeck.service` starts the normal ZX Deck application.
 
-The splash service waits for the local filesystem and for the SPI/GPIO device
-nodes, initializes the ILI9341-compatible display, draws the production image
+The splash service waits only for the mount containing the checkout and for
+udev to trigger device discovery; it does not wait for the broader
+`local-fs.target`. It then waits briefly for the SPI/GPIO device nodes,
+initializes the ILI9341-compatible display, draws the production image
 and notifies systemd when the image is visible. It remains alive so releasing
 GPIO25 cannot reset this display to white. Starting `zxdeck.service` stops the
 splash holder synchronously in `ExecStartPre` and then takes ownership of
