@@ -141,8 +141,11 @@ The splash service waits for the local filesystem and for the SPI/GPIO device
 nodes, initializes the ILI9341-compatible display, draws the production image
 and notifies systemd when the image is visible. It remains alive so releasing
 GPIO25 cannot reset this display to white. Starting `zxdeck.service` stops the
-splash holder first and then takes ownership of SPI/GPIO. The splash is ordered
-before `basic.target`.
+splash holder synchronously in `ExecStartPre` and then takes ownership of
+SPI/GPIO. The main service explicitly wants and starts after the ready splash;
+it does not use `Conflicts=`, because that would let systemd discard the splash
+start job when both services are part of the same boot transaction. The splash
+is ordered before `basic.target`.
 
 This cannot eliminate the very first white interval after power-on: the TFT
 backlight is powered before Linux is able to initialize and drive the display.

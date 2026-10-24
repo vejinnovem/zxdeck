@@ -15,8 +15,13 @@ class ServiceUnitTests(unittest.TestCase):
         self.assertIn("WorkingDirectory=/opt/zxdeck", unit)
         self.assertIn("/opt/zxdeck/.venv/bin/python", unit)
         self.assertIn("--allow-poweroff", unit)
+        self.assertIn("Wants=zxdeck-splash.service", unit)
         self.assertIn("After=local-fs.target zxdeck-splash.service", unit)
-        self.assertIn("Conflicts=zxdeck-splash.service", unit)
+        self.assertIn(
+            "ExecStartPre=+/usr/bin/systemctl stop zxdeck-splash.service",
+            unit,
+        )
+        self.assertNotIn("Conflicts=zxdeck-splash.service", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
 
     def test_splash_unit_runs_before_basic_target(self) -> None:
