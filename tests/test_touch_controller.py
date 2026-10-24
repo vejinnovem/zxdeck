@@ -202,6 +202,7 @@ class TouchUIControllerTests(unittest.TestCase):
 
             controller.handle_action("settings")
             controller.handle_action("directories")
+            controller.handle_action("directory:0")
             controller.handle_action("use-directory")
 
             self.assertEqual(Screen.SETTINGS, controller.screen)
