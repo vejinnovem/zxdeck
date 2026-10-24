@@ -133,12 +133,16 @@ sudo .venv/bin/python tools/install_service.py
 It writes and enables two services:
 
 - `/etc/systemd/system/zxdeck-splash.service` draws
-  `assets/branding/zxdeck.png` as early as practical during boot and exits;
+  `assets/branding/zxdeck.png` as early as practical during boot and keeps the
+  LCD reset line active until the normal application replaces it;
 - `/etc/systemd/system/zxdeck.service` starts the normal ZX Deck application.
 
 The splash service waits for the local filesystem and for the SPI/GPIO device
 nodes, initializes the ILI9341-compatible display, draws the production image
-and exits. It is ordered before `basic.target`.
+and notifies systemd when the image is visible. It remains alive so releasing
+GPIO25 cannot reset this display to white. Starting `zxdeck.service` stops the
+splash holder first and then takes ownership of SPI/GPIO. The splash is ordered
+before `basic.target`.
 
 This cannot eliminate the very first white interval after power-on: the TFT
 backlight is powered before Linux is able to initialize and drive the display.

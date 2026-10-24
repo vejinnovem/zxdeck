@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import signal
+import socket
 import sys
 import time
 
@@ -30,7 +33,24 @@ def parse_args() -> argparse.Namespace:
         default=3.0,
         help="maximum time to wait for SPI/GPIO device nodes during early boot",
     )
+    parser.add_argument(
+        "--hold",
+        action="store_true",
+        help="keep the LCD reset line active until systemd stops this process",
+    )
     return parser.parse_args()
+
+
+def notify_systemd_ready() -> None:
+    """Notify a Type=notify unit without adding a systemd Python dependency."""
+    address = os.environ.get("NOTIFY_SOCKET")
+    if not address:
+        return
+    if address.startswith("@"):
+        address = "\0" + address[1:]
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notifier:
+        notifier.connect(address)
+        notifier.sendall(b"READY=1")
 
 
 def wait_for_devices(config, timeout: float) -> None:
@@ -58,15 +78,25 @@ def main() -> int:
 
     wait_for_devices(config.display, args.wait_seconds)
     display = ILI9341(config.display)
+    running = True
+
+    def stop(_signum: int, _frame: object) -> None:
+        nonlocal running
+        running = False
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
     try:
         display.initialize()
         image = render_splash(config.display.width, config.display.height)
         display.set_window(0, 0, config.display.width - 1, config.display.height - 1)
         display.write_rgb565(image_to_rgb565(image))
+        notify_systemd_ready()
+        print("ZX Deck boot splash displayed.", flush=True)
+        while args.hold and running:
+            time.sleep(0.1)
     finally:
         display.close()
-
-    print("ZX Deck boot splash displayed.", flush=True)
     return 0
 
 

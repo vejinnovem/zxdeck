@@ -15,6 +15,8 @@ class ServiceUnitTests(unittest.TestCase):
         self.assertIn("WorkingDirectory=/opt/zxdeck", unit)
         self.assertIn("/opt/zxdeck/.venv/bin/python", unit)
         self.assertIn("--allow-poweroff", unit)
+        self.assertIn("After=local-fs.target zxdeck-splash.service", unit)
+        self.assertIn("Conflicts=zxdeck-splash.service", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
 
     def test_splash_unit_runs_before_basic_target(self) -> None:
@@ -24,9 +26,12 @@ class ServiceUnitTests(unittest.TestCase):
         self.assertIn("DefaultDependencies=no", unit)
         self.assertIn("After=local-fs.target", unit)
         self.assertIn("Before=basic.target", unit)
+        self.assertIn("Type=notify", unit)
+        self.assertIn("NotifyAccess=main", unit)
         self.assertIn("User=deck", unit)
         self.assertIn("SupplementaryGroups=spi gpio", unit)
         self.assertIn("/opt/zxdeck/tools/boot_splash.py", unit)
+        self.assertIn("--hold", unit)
         self.assertIn("WantedBy=basic.target", unit)
 
 

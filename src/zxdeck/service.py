@@ -13,7 +13,8 @@ def render_systemd_unit(root: Path, user: str) -> str:
     application = root / "config" / "application.zxdeck-pi-zero.toml"
     return f"""[Unit]
 Description=ZX Deck touchscreen application
-After=local-fs.target
+After=local-fs.target zxdeck-splash.service
+Conflicts=zxdeck-splash.service
 
 [Service]
 Type=simple
@@ -33,7 +34,7 @@ WantedBy=multi-user.target
 
 
 def render_systemd_splash_unit(root: Path, user: str) -> str:
-    """Render an early-boot unit that paints the production splash and exits."""
+    """Render an early-boot unit that holds the splash until the app starts."""
     root = root.resolve()
     python = root / ".venv" / "bin" / "python"
     tool = root / "tools" / "boot_splash.py"
@@ -46,14 +47,16 @@ After=local-fs.target systemd-udev-trigger.service
 Before=basic.target
 
 [Service]
-Type=oneshot
+Type=notify
+NotifyAccess=main
 User={user}
 Group={user}
 SupplementaryGroups=spi gpio
 WorkingDirectory={root}
 Environment=PYTHONPATH={root / 'src'}
-ExecStart={python} {tool} --config {hardware}
+ExecStart={python} {tool} --config {hardware} --hold
 TimeoutStartSec=6
+TimeoutStopSec=2
 
 [Install]
 WantedBy=basic.target
