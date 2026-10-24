@@ -73,6 +73,13 @@ class DeviceTouchUIController(BaseTouchUIController):
             return
         BaseTouchUIController.handle_action(self, action)
 
+    def _handle_home(self, action: str) -> None:
+        if action == "record":
+            self._stop_transport()
+            self.state = self.state.next_revision(error="REC NOT IMPLEMENTED")
+            return
+        BaseTouchUIController._handle_home(self, action)
+
     def _handle_settings(self, action: str) -> None:
         if action == "output-level":
             self.output_level_mode = "tape"
