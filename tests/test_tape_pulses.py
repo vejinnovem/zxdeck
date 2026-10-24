@@ -13,6 +13,7 @@ from zxdeck.tape.pulses import (
     Pulse,
     PulseRun,
     TapeDecodeError,
+    TapeStop,
     iter_tape_events,
 )
 
@@ -89,8 +90,7 @@ class TapePulseTests(unittest.TestCase):
             self.assertNotIsInstance(list(iter_tape_events(path))[-1], Pause)
 
             path.write_bytes(b"ZXTape!\x1a\x01\x14\x20\x00\x00")
-            with self.assertRaisesRegex(TapeDecodeError, "manual tape stop"):
-                list(iter_tape_events(path))
+            self.assertEqual([TapeStop()], list(iter_tape_events(path)))
 
     def test_pcm_preserves_fractional_timing_and_pause(self) -> None:
         output = BytesIO()
