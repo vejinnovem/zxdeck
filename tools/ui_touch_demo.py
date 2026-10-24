@@ -147,6 +147,8 @@ def main() -> int:
     title_refresh_at = 0.0
     title_rgb565 = b""
     title_canvas_width = 0
+    playback_phase = None
+    progress_animation_step = 0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -163,6 +165,13 @@ def main() -> int:
             title_canvas_width = title_canvas.width
             title_rgb565 = image_to_rgb565(title_canvas)
         rendered = controller.render(renderer, cursor_visible=cursor_visible)
+        if controller.screen is Screen.HOME and controller.state.transport is TransportState.PLAYING:
+            renderer.decorate_signal_progress(
+                rendered.image,
+                controller.state,
+                phase=playback_phase,
+                animation_step=progress_animation_step,
+            )
         send_frame(display, rendered)
         previous_screen = controller.screen
 
@@ -172,6 +181,12 @@ def main() -> int:
         if controller.screen is not Screen.HOME:
             return
         fresh = controller.render(renderer, cursor_visible=cursor_visible)
+        renderer.decorate_signal_progress(
+            fresh.image,
+            controller.state,
+            phase=playback_phase,
+            animation_step=progress_animation_step,
+        )
         send_region(display, fresh.image, HOME_PROGRESS_RECT)
         if rendered is None:
             rendered = fresh
@@ -241,7 +256,7 @@ def main() -> int:
         redraw()
 
     def apply_action(action: str, *, persist_audio: bool = True) -> None:
-        nonlocal running, cursor_visible, cursor_changed_at, tape_entries
+        nonlocal running, cursor_visible, cursor_changed_at, tape_entries, playback_phase, progress_animation_step
         previous_storage_path = controller.selected_storage_path
         previous_transport = controller.state.transport
         previous_playback_device = controller.selected_playback_device
@@ -258,12 +273,15 @@ def main() -> int:
             install_update(); return
         if action == "play" and controller.state.transport is TransportState.PLAYING:
             tape_path = controller.selected_tape_path
+            playback_phase = None
+            progress_animation_step = 0
             if tape_path is None:
                 controller.state = controller.state.next_revision(transport=TransportState.STOPPED, error="TAPE PATH UNAVAILABLE")
             else:
                 player.play(tape_path)
         elif action in {"stop", "rewind", "new", "record"} or controller.state.transport is not previous_transport and controller.state.transport is not TransportState.PLAYING:
             player.stop()
+            playback_phase = None
         audio_changed = controller.selected_playback_device != previous_playback_device or controller.selected_capture_device != previous_capture_device or controller.output_level != previous_output_level
         if controller.selected_playback_device != previous_playback_device:
             player.device = controller.selected_playback_device
@@ -339,7 +357,11 @@ def main() -> int:
             if playback_event is not None:
                 if playback_event.kind in {"started", "progress"}:
                     controller.state = controller.state.next_revision(transport=TransportState.PLAYING, position_seconds=playback_event.position_seconds if playback_event.position_seconds is not None else controller.state.position_seconds, duration_seconds=playback_event.duration_seconds if playback_event.duration_seconds is not None else controller.state.duration_seconds, error=None)
+                    if playback_event.kind == "progress" and playback_event.phase is not None:
+                        playback_phase = playback_event.phase
+                        progress_animation_step += 1
                 elif playback_event.kind in {"finished", "stopped", "error"}:
+                    playback_phase = None
                     controller.state = controller.state.next_revision(transport=TransportState.STOPPED, position_seconds=playback_event.position_seconds if playback_event.position_seconds is not None else controller.state.position_seconds, duration_seconds=playback_event.duration_seconds if playback_event.duration_seconds is not None else controller.state.duration_seconds, error=playback_event.message[:28].upper() if playback_event.kind == "error" else None)
                 if controller.screen is Screen.HOME:
                     if playback_event.kind == "progress":
