@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 import unittest
+from unittest.mock import patch
 
-from zxdeck.system.network import parse_ipv4_addresses, parse_nmcli_wifi
+from zxdeck.system.network import connect_wifi, parse_ipv4_addresses, parse_nmcli_wifi
 
 
 class NetworkTests(unittest.TestCase):
@@ -32,6 +34,23 @@ class NetworkTests(unittest.TestCase):
         self.assertTrue(networks[0].active)
         self.assertTrue(networks[0].secured)
         self.assertFalse(networks[2].secured)
+
+    @patch("zxdeck.system.network.subprocess.run")
+    def test_wifi_password_is_sent_on_stdin_not_process_arguments(self, run) -> None:
+        run.return_value = subprocess.CompletedProcess(
+            ("nmcli",),
+            0,
+            stdout="Device 'wlan0' successfully activated\n",
+            stderr="",
+        )
+
+        connected, _detail = connect_wifi("Home", "secret-pass")
+
+        self.assertTrue(connected)
+        command = run.call_args.args[0]
+        self.assertIn("--ask", command)
+        self.assertNotIn("secret-pass", command)
+        self.assertEqual("secret-pass\n", run.call_args.kwargs["input"])
 
 
 if __name__ == "__main__":
