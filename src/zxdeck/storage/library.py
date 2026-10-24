@@ -91,8 +91,18 @@ class TapeLibrary:
     def entries(self) -> tuple[TapeEntry, ...]:
         return self._entries
 
-    def catalog(self, progress: ProgressCallback | None = None) -> TapeCatalog:
-        """Return a UI-ready catalog, using lazy paths for a generated index."""
+    def catalog(
+        self,
+        progress: ProgressCallback | None = None,
+        *,
+        force_refresh: bool = False,
+    ) -> TapeCatalog:
+        """Return a UI-ready catalog, preferring the persisted filename index.
+
+        ``force_refresh`` deliberately ignores an existing index, walks the
+        configured library again and rewrites the index.  Normal startup keeps
+        the fast path completely scan-free when a valid index exists.
+        """
         root = self.config.path
         mount_path = self.config.mount_path or root
         if self.config.require_mount and not self._mount_check(mount_path):
@@ -100,16 +110,23 @@ class TapeLibrary:
         if not root.is_dir():
             raise StorageUnavailable(f"storage directory does not exist: {root}")
 
-        if progress is not None:
-            progress("LOADING INDEX", 0)
-        if self.config.recursive:
+        if self.config.recursive and not force_refresh:
             indexed = load_tape_catalog(root, frozenset(self.config.extensions))
             if indexed is not None:
-                if progress is not None:
-                    progress("INDEX READY", len(indexed.names))
+                # A healthy cache is the normal startup path.  Do not trigger
+                # the indexing progress screen for a single JSON read.
                 return indexed
 
-        entries = self.refresh(progress=progress)
+        entries = self.refresh(
+            progress=progress,
+            force=force_refresh or self.config.recursive,
+        )
+        if self.config.recursive:
+            # refresh() writes the new index.  Reload it so the returned path
+            # sequence keeps the same lazy behaviour as normal startup.
+            indexed = load_tape_catalog(root, frozenset(self.config.extensions))
+            if indexed is not None:
+                return indexed
         return TapeCatalog(
             tuple(entry.name for entry in entries),
             tuple(entry.path for entry in entries),
@@ -118,6 +135,8 @@ class TapeLibrary:
     def refresh(
         self,
         progress: ProgressCallback | None = None,
+        *,
+        force: bool = False,
     ) -> tuple[TapeEntry, ...]:
         root = self.config.path
         mount_path = self.config.mount_path or root
@@ -129,7 +148,11 @@ class TapeLibrary:
         extensions = frozenset(self.config.extensions)
         if progress is not None:
             progress("LOADING INDEX", 0)
-        indexed = load_tape_index(root, extensions) if self.config.recursive else None
+        indexed = (
+            load_tape_index(root, extensions)
+            if self.config.recursive and not force
+            else None
+        )
         if indexed is not None:
             self._entries = indexed
             if progress is not None:

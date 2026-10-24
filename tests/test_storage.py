@@ -63,6 +63,29 @@ class TapeLibraryTests(unittest.TestCase):
 
             self.assertEqual((tape,), tuple(entry.path for entry in entries))
 
+    def test_force_refresh_ignores_valid_but_stale_index(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stale = root / "Old.tap"
+            fresh = root / "New.tap"
+            fresh.touch()
+            write_tape_index(root, (Path(stale.name),))
+
+            catalog = TapeLibrary(StorageConfig(path=root)).catalog(
+                force_refresh=True
+            )
+
+            self.assertEqual(("New.tap",), tuple(catalog.names))
+            self.assertEqual(fresh, catalog.paths[0])
+
+            # The rebuilt index must also be the fast path on the next start.
+            with patch(
+                "zxdeck.storage.library.os.walk",
+                side_effect=AssertionError("scan used"),
+            ):
+                cached = TapeLibrary(StorageConfig(path=root)).catalog()
+            self.assertEqual(("New.tap",), tuple(cached.names))
+
     def test_scan_reports_progress_and_persists_index(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

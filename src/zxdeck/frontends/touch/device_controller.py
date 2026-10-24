@@ -25,7 +25,8 @@ SAVES_SCREEN = "saves"
 class DeviceTouchUIController(BaseTouchUIController):
     """Add operating-system controls while keeping the base controller testable."""
 
-    settings_entry_count: int = 8
+    settings_entry_count: int = 9
+    library_rescan_requested: bool = False
     output_level_mode: str = "tape"
     previous_hardware_output_level: int = 100
     wifi_networks: Sequence[WifiNetwork] = ()
@@ -194,6 +195,8 @@ class DeviceTouchUIController(BaseTouchUIController):
         elif action == "wifi":
             self._refresh_wifi(rescan=True)
             self.screen = WIFI_NETWORKS_SCREEN
+        elif action == "rescan-library":
+            self.library_rescan_requested = True
         else:
             BaseTouchUIController._handle_settings(self, action)
 
