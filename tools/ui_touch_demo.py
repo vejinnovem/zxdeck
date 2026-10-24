@@ -51,10 +51,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_tape_catalog(config, progress=None):
+def load_tape_catalog(config, progress=None, *, force_refresh: bool = False):
     library = TapeLibrary(config)
     try:
-        return library.catalog(progress=progress)
+        return library.catalog(
+            progress=progress,
+            force_refresh=force_refresh,
+        )
     except StorageUnavailable as exc:
         print(f"Tape library unavailable ({exc}).", flush=True)
         return None
@@ -269,6 +272,45 @@ def main() -> int:
             print(f"ZX Deck restart failed: {detail}", flush=True)
         redraw()
 
+    def rebuild_tape_library() -> None:
+        nonlocal tape_catalog, playback_phase
+        controller.library_rescan_requested = False
+        player.stop()
+        playback_phase = None
+
+        selected_path = controller.selected_storage_path or storage_config.path
+        selected_config = replace(app_config.storage, path=selected_path)
+        tape_catalog = load_tape_catalog(
+            selected_config,
+            show_index_progress,
+            force_refresh=True,
+        )
+        controller.files = tape_catalog.names if tape_catalog is not None else ()
+        controller.file_paths = tape_catalog.paths if tape_catalog is not None else ()
+        controller.search_query = ""
+        controller.selected_file = 0
+        controller.file_offset = 0
+        controller.active_save_path = None
+        controller._tape_segments = ()
+        controller._selected_segment = 0
+        controller._tape_duration_seconds = None
+        controller.state = controller.state.next_revision(
+            tape_name=None,
+            transport=TransportState.STOPPED,
+            position_seconds=0.0,
+            duration_seconds=None,
+            error=None if controller.files else "NO TAPE FILES",
+            segment_label=None,
+            segment_index=0,
+            segment_count=0,
+            segment_starts=(),
+        )
+        print(
+            f"Tape library rescanned: {len(controller.files)} files in {selected_path}",
+            flush=True,
+        )
+        redraw()
+
     def apply_action(action: str, *, persist_audio: bool = True) -> None:
         nonlocal running, cursor_visible, cursor_changed_at, playback_phase, progress_animation_step
         previous_storage_path = controller.selected_storage_path
@@ -281,6 +323,9 @@ def main() -> int:
         elif action == "capture-device":
             controller.capture_devices = list_audio_devices("capture")
         controller.handle_action(action)
+        if controller.library_rescan_requested:
+            rebuild_tape_library()
+            return
         if action in {"updates", "check-update"}:
             check_updates(); return
         if action == "install-update":
