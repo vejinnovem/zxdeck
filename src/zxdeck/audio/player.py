@@ -10,6 +10,7 @@ import subprocess
 from typing import Literal
 
 from zxdeck.audio.pcm import count_pcm_samples, write_pcm
+from zxdeck.tape import TapeStop, selected_event_index
 from zxdeck.tape.pulses import iter_tape_events
 
 
@@ -53,6 +54,8 @@ class AudioPlayer:
 
     def play(self, path: str | Path) -> None:
         self.stop()
+        tape_path = Path(path)
+        start_event_index = selected_event_index(tape_path)
         context = multiprocessing.get_context("spawn")
         self._cancel = context.Event()
         self._events = context.Queue()
@@ -60,9 +63,10 @@ class AudioPlayer:
         self._process = context.Process(
             target=_play_worker,
             args=(
-                str(Path(path)),
+                str(tape_path),
                 self.device,
                 self.sample_rate,
+                start_event_index,
                 self._cancel,
                 self._events,
                 self._level,
@@ -117,7 +121,15 @@ class AudioPlayer:
         self._level = None
 
 
-def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> None:
+def _play_worker(
+    path,
+    device,
+    sample_rate,
+    start_event_index,
+    cancelled,
+    events,
+    output_level,
+) -> None:
     command = (
         "aplay",
         "-q",
@@ -135,18 +147,43 @@ def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> 
     player = None
     duration_seconds = None
     try:
+        tape_events = tuple(iter_tape_events(path))
+        start_event_index = min(
+            len(tape_events),
+            max(0, int(start_event_index)),
+        )
         total_samples = count_pcm_samples(
-            iter_tape_events(path),
+            tape_events,
+            sample_rate=sample_rate,
+        )
+        base_samples = count_pcm_samples(
+            tape_events[:start_event_index],
             sample_rate=sample_rate,
         )
         duration_seconds = total_samples / sample_rate
+
+        remaining = tape_events[start_event_index:]
+        stop_offset = next(
+            (
+                index
+                for index, event in enumerate(remaining)
+                if isinstance(event, TapeStop)
+            ),
+            None,
+        )
+        playback_events = (
+            remaining[:stop_offset]
+            if stop_offset is not None
+            else remaining
+        )
+
         player = subprocess.Popen(command, stdin=subprocess.PIPE)
         if player.stdin is None:
             raise RuntimeError("cannot open ALSA input pipe")
         events.put(
             PlaybackEvent(
                 "started",
-                position_seconds=0.0,
+                position_seconds=base_samples / sample_rate,
                 duration_seconds=duration_seconds,
             )
         )
@@ -155,14 +192,17 @@ def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> 
             events.put(
                 PlaybackEvent(
                     "progress",
-                    position_seconds=min(duration_seconds, samples / sample_rate),
+                    position_seconds=min(
+                        duration_seconds,
+                        (base_samples + samples) / sample_rate,
+                    ),
                     duration_seconds=duration_seconds,
                     phase=phase if phase in {"pilot", "data", "pause"} else None,
                 )
             )
 
-        write_pcm(
-            iter_tape_events(path),
+        written_samples = write_pcm(
+            playback_events,
             player.stdin,
             sample_rate=sample_rate,
             cancelled=cancelled.is_set,
@@ -170,22 +210,36 @@ def _play_worker(path, device, sample_rate, cancelled, events, output_level) -> 
             level_percent=lambda: output_level.value,
             phase_progress=report_phase_progress,
         )
+        absolute_position = min(
+            duration_seconds,
+            (base_samples + written_samples) / sample_rate,
+        )
         player.stdin.close()
         return_code = player.wait()
         if cancelled.is_set():
             events.put(
                 PlaybackEvent(
                     "stopped",
+                    position_seconds=absolute_position,
                     duration_seconds=duration_seconds,
                 )
             )
         elif return_code:
             events.put(PlaybackEvent("error", f"ALSA EXIT {return_code}"))
+        elif stop_offset is not None:
+            events.put(
+                PlaybackEvent(
+                    "stopped",
+                    message="TAPE STOP",
+                    position_seconds=absolute_position,
+                    duration_seconds=duration_seconds,
+                )
+            )
         else:
             events.put(
                 PlaybackEvent(
                     "finished",
-                    position_seconds=duration_seconds,
+                    position_seconds=absolute_position,
                     duration_seconds=duration_seconds,
                 )
             )
