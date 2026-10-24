@@ -4,7 +4,7 @@ from io import BytesIO
 import unittest
 
 from zxdeck.audio.pcm import count_pcm_samples, write_pcm
-from zxdeck.tape.pulses import Pause, Pulse, PulseRun, ZX_CLOCK_HZ
+from zxdeck.tape.pulses import EncodedData, Pause, Pulse, PulseRun, ZX_CLOCK_HZ
 
 
 class PcmTests(unittest.TestCase):
@@ -34,6 +34,25 @@ class PcmTests(unittest.TestCase):
         )
         self.assertEqual(3, total)
         self.assertEqual([2, 3], progress)
+
+    def test_phase_progress_distinguishes_pilot_data_and_pause(self) -> None:
+        output = BytesIO()
+        phases = []
+        write_pcm(
+            (
+                Pulse(3500),
+                EncodedData(b"\x00", zero_tstates=3500, one_tstates=3500),
+                Pause(1),
+            ),
+            output,
+            sample_rate=1000,
+            chunk_size=1,
+            phase_progress=lambda _samples, phase: phases.append(phase),
+        )
+
+        self.assertEqual("pilot", phases[0])
+        self.assertIn("data", phases)
+        self.assertEqual("pause", phases[-1])
 
 
 if __name__ == "__main__":
