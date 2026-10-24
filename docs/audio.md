@@ -19,23 +19,35 @@ stored in `~/.local/state/zxdeck/audio.json`, outside the checkout, and
 overrides the TOML default on later boots. A newly selected playback endpoint
 is used by the next PLAY action; no service restart is required.
 
-## Output level
+## Two different output controls
 
-`OUTPUT LEVEL` controls the amplitude of the generated unsigned 8-bit tape
-signal before it reaches ALSA. It is intentionally independent of the USB
-adapter's hardware mixer so it works even with simple USB audio dongles that do
-not expose a useful playback-volume control.
+ZX Deck deliberately separates the generated tape-signal level from the USB
+audio adapter's own playback mixer. They are two stages in the same signal
+path, so a high value in one stage does not compensate for an unexpectedly low
+value in the other.
 
-The saved range is 0-100%. New or older state files without a saved value start
-at a conservative 25%; 100% reproduces the original generated PCM amplitude.
-The `-`, `MUTE` and `+` controls change level in 5% steps, and holding `-` or `+`
-repeats the adjustment. A change also affects an already-running playback
-worker, normally within one PCM buffer interval.
+`TAPE SIGNAL` controls the amplitude of the generated unsigned 8-bit tape PCM
+before it reaches ALSA. The saved range is 0-100%. New or older state files
+without a saved value start at a conservative 25%; 100% reproduces the original
+generated PCM amplitude. The `-`, `MUTE` and `+` controls change it in 5% steps,
+and holding `-` or `+` repeats the adjustment. A change also affects an
+already-running playback worker, normally within one PCM buffer interval.
 
-This is a software signal-level control, not a calibrated electrical limit for
-the Spectrum EAR input. Different USB adapters can produce very different
-analog voltages. A future hardware guide should still define a measured safe
-attenuator/calibration procedure before treating 100% as universally safe.
+`CARD OUTPUT` controls the selected playback device's ALSA hardware mixer. ZX
+Deck looks for a usable playback-volume control, preferring controls named
+`Speaker`, `Headphone`, `PCM` and `Master`. If the adapter exposes no suitable
+mixer, Settings shows `N/A` and the card-level screen explains that there is no
+playback mixer to adjust.
+
+This distinction matters for Spectrum loading: a USB dongle can receive a
+full-strength generated tape waveform while its ALSA `Speaker` control is still
+set too low for the Spectrum EAR input. The Settings screen therefore shows the
+actual card-mixer percentage separately from the generated tape percentage.
+
+Neither percentage is a calibrated electrical voltage at the Spectrum EAR
+input. Different USB adapters can produce very different analog levels, so the
+lowest reliable combination should be used rather than treating either 100% as
+a universal electrical target.
 
 ## Playback timing and progress
 
