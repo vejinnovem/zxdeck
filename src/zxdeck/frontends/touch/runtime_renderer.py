@@ -17,6 +17,10 @@ from .renderer import (
 )
 
 
+SPECTRUM_BLUE = (0, 70, 235)
+PROGRESS_INNER_RECT = (17, 83, 224, 92)
+
+
 class DeviceTouchRenderer(BaseDeviceTouchRenderer):
     """Preserve marquee state and refine runtime-only file navigation."""
 
@@ -52,6 +56,58 @@ class DeviceTouchRenderer(BaseDeviceTouchRenderer):
         self._runtime_title_name = tape_name
         self._runtime_title_offset = saved_offset
         return rendered
+
+    def decorate_signal_progress(
+        self,
+        image,
+        state,
+        *,
+        phase: str | None,
+        animation_step: int = 0,
+    ) -> None:
+        """Paint Spectrum-like pilot/data stripes while preserving progress.
+
+        The whole progress track identifies the current signal phase. Elapsed
+        stripes are bright and the remaining part is dimmed, so phase remains
+        visible even at the start of a tape while the bar still conveys time.
+        """
+        if phase not in {"pilot", "data"}:
+            return
+
+        from PIL import ImageDraw
+
+        draw = ImageDraw.Draw(image)
+        left, top, right, bottom = PROGRESS_INNER_RECT
+        width = right - left
+        ratio = 0.0
+        if state.duration_seconds and state.duration_seconds > 0:
+            ratio = min(1.0, max(0.0, state.position_seconds / state.duration_seconds))
+        elapsed_right = left + int(width * ratio)
+
+        bright = (RED, SPECTRUM_BLUE) if phase == "pilot" else (YELLOW, SPECTRUM_BLUE)
+        dim = tuple(tuple(channel // 4 for channel in colour) for colour in bright)
+        stripe_width = 8
+        shift = (animation_step * 2) % (stripe_width * 2)
+
+        x = left - shift
+        stripe_index = 0
+        while x < right:
+            segment_left = max(left, x)
+            segment_right = min(right, x + stripe_width)
+            if segment_right > segment_left:
+                palette = bright if segment_left < elapsed_right else dim
+                colour = palette[stripe_index % 2]
+                draw.rectangle(
+                    (segment_left, top, segment_right - 1, bottom - 1),
+                    fill=colour,
+                )
+            x += stripe_width
+            stripe_index += 1
+
+        # A narrow marker keeps the exact progress position legible even when
+        # the bright/dim boundary lands inside a coloured stripe.
+        if left < elapsed_right < right:
+            draw.line((elapsed_right, top, elapsed_right, bottom - 1), fill=(245, 245, 245))
 
     def render_files(
         self,
