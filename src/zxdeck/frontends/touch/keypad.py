@@ -14,7 +14,7 @@ class InputMode(str, Enum):
 
 
 _BASE_MAP: dict[str, str] = {
-    "1": ".,?!1",
+    "1": ".,?!1@#$%&()+/:;=",
     "2": "ABC2",
     "3": "DEF3",
     "4": "GHI4",
@@ -23,7 +23,7 @@ _BASE_MAP: dict[str, str] = {
     "7": "PQRS7",
     "8": "TUV8",
     "9": "WXYZ9",
-    "0": " 0_-",
+    "0": " 0_-*",
 }
 
 
@@ -111,7 +111,10 @@ class MultiTapEditor:
             return key
         chars = _BASE_MAP[key]
         if self.mode is InputMode.LOWER:
-            chars = "".join(char.lower() if char.isalpha() else char for char in chars)
+            chars = "".join(
+                char.lower() if char.isalpha() else char
+                for char in chars
+            )
         return chars
 
     def _clear_pending(self) -> None:
