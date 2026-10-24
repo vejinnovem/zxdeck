@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 
 from zxdeck.core.state import TransportState
-from zxdeck.tape import TapeDecodeError, inspect_tape_segments, select_tape_segment
+from zxdeck.tape import TapeDecodeError, inspect_tape_timeline, select_tape_segment
 
 from .controller import TouchUIController as BaseTouchUIController
 from .device_controller import DeviceTouchUIController
@@ -19,6 +19,7 @@ from .renderer import (
     CYAN,
     DIM,
     RED,
+    WHITE,
     HitTarget,
     Screen,
     TouchRenderer,
@@ -61,6 +62,43 @@ class DeviceTouchRenderer(RuntimeDeviceTouchRenderer):
             self._hardware_checked_at = now
         return self._cached_hardware_output
 
+    def _draw_segment_markers(self, image, state) -> None:
+        """Draw compact boundary ticks without competing with the playhead."""
+        duration = state.duration_seconds
+        starts = state.segment_starts
+        if not starts or duration is None or duration <= 0:
+            return
+
+        from PIL import ImageDraw
+
+        draw = ImageDraw.Draw(image)
+        left, right = 17, 223
+        width = right - left
+        for index, start in enumerate(starts):
+            ratio = min(1.0, max(0.0, start / duration))
+            x = left + round(width * ratio)
+            colour = WHITE if index + 1 == state.segment_index else DIM
+            draw.line((x, 78, x, 81), fill=colour)
+            draw.line((x, 93, x, 96), fill=colour)
+
+    def decorate_signal_progress(
+        self,
+        image,
+        state,
+        *,
+        phase: str | None,
+        animation_step: int = 0,
+    ) -> None:
+        # Runtime stripes repaint the progress-bar pixels, so restore the
+        # segment ticks afterwards from the same state used by navigation.
+        super().decorate_signal_progress(
+            image,
+            state,
+            phase=phase,
+            animation_step=animation_step,
+        )
+        self._draw_segment_markers(image, state)
+
     def render_home(self, state):
         """Replace the original transport row with segment navigation."""
         rendered = super().render_home(state)
@@ -68,6 +106,7 @@ class DeviceTouchRenderer(RuntimeDeviceTouchRenderer):
         from PIL import ImageDraw
 
         draw = ImageDraw.Draw(rendered.image)
+        self._draw_segment_markers(rendered.image, state)
         draw.rectangle((0, 112, 240, 235), fill=BLACK)
 
         if state.segment_count:
@@ -177,17 +216,23 @@ class TouchUIController(DeviceTouchUIController):
     def _load_segment_navigation(self) -> None:
         path = self.selected_tape_path
         segments = ()
+        duration_seconds = None
         if path is not None:
             try:
-                segments = inspect_tape_segments(path)
+                timeline = inspect_tape_timeline(path)
+                segments = timeline.segments
+                duration_seconds = timeline.duration_seconds
             except (OSError, TapeDecodeError, ValueError):
                 segments = ()
         self._tape_segments = segments
+        self._tape_duration_seconds = duration_seconds
         if not segments:
             self.state = self.state.next_revision(
+                duration_seconds=duration_seconds,
                 segment_label=None,
                 segment_index=0,
                 segment_count=0,
+                segment_starts=(),
             )
             return
         self._select_segment(0)
@@ -216,10 +261,12 @@ class TouchUIController(DeviceTouchUIController):
         self.state = self.state.next_revision(
             transport=TransportState.STOPPED,
             position_seconds=segment.start_seconds,
+            duration_seconds=getattr(self, "_tape_duration_seconds", None),
             error=None,
             segment_label=segment.label,
             segment_index=index + 1,
             segment_count=len(segments),
+            segment_starts=tuple(item.start_seconds for item in segments),
         )
 
     def _sync_segment_metadata(self) -> None:
@@ -249,6 +296,13 @@ class TouchUIController(DeviceTouchUIController):
         if action == "new":
             self._tape_segments = ()
             self._selected_segment = 0
+            self._tape_duration_seconds = None
+            self.state = self.state.next_revision(
+                segment_label=None,
+                segment_index=0,
+                segment_count=0,
+                segment_starts=(),
+            )
             super()._handle_home(action)
             return
 
