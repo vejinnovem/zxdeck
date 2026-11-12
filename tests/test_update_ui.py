@@ -15,7 +15,7 @@ class UpdateNavigationTests(unittest.TestCase):
         controller = TouchUIController(())
         controller.handle_action("settings")
         self.assertEqual(Screen.SETTINGS, controller.screen)
-        self.assertEqual(8, controller.settings_entry_count)
+        self.assertEqual(9, controller.settings_entry_count)
         controller.handle_action("updates")
         self.assertEqual("updates", controller.screen)
         controller.handle_action("back")
